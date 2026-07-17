@@ -1,0 +1,11 @@
+# vscode balabala files
+.vscode/
+
+# cmake build files
+out/
+
+# configure files
+..clangd
+
+# assets files
+assets/

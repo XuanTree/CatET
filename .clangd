@@ -1,0 +1,5 @@
+CompileFlags:
+  Add: [
+    "-ID:/Projects/CET/include",
+    "-ID:/RayLib_MinGW/include"
+  ]
