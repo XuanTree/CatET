@@ -5,7 +5,7 @@
 out/
 
 # configure files
-..clangd
+.clangd
 
 # assets files
 assets/
