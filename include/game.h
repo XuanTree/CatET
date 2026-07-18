@@ -2,8 +2,9 @@
 #define GAME_H
 
 #pragma once
+#include "core/strings.h"
 #include <raylib.h>
 
-void RunTheGame();
+void Run();
 
 #endif // GAME_H

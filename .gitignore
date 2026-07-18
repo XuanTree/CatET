@@ -1,5 +1,6 @@
 # vscode balabala files
 .vscode/
+projects/
 
 # cmake build files
 out/
