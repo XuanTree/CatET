@@ -1,8 +1,8 @@
 #ifndef PLAYER_H
 #define PLAYER_H
 
-#include "animation.h"
 #pragma once
+#include "animation.h"
 #include "core/strings.h"
 #include <raylib.h>
 
