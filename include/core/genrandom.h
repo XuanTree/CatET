@@ -1,8 +1,11 @@
-﻿//
-// Created by 玄树 on 2026/7/20.
-//
-
-#ifndef CET_GENRANDOM_H
+﻿#ifndef CET_GENRANDOM_H
 #define CET_GENRANDOM_H
+
+#pragma once
+#include <time.h>
+#include <stdlib.h>
+
+int genRandomNum(int range);
+
 
 #endif //CET_GENRANDOM_H

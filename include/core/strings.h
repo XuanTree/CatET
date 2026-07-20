@@ -2,7 +2,6 @@
 #define STRINGS_H
 
 #pragma once
-#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 

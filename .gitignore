@@ -1,12 +1,10 @@
-# vscode balabala files
+# IDE Generated files
 .vscode/
-projects/
+.idea/
 
 # cmake build files
 out/
+.cmake-build-debug/
 
 # configure files
 .clangd
-
-# assets files
-assets/

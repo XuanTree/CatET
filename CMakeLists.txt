@@ -43,6 +43,10 @@ add_executable(CET
     src/player.c
     include/platform.h
     include/animation.h
+        include/core/genrandom.h
+        main.c
+        main.c
+        src/core/genrandom.c
 )
 
 # Try to find raylib from system first (using custom Findraylib.cmake module)

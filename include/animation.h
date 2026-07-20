@@ -16,8 +16,8 @@ typedef struct Animation {
 } Animation;
 
 // 初始化动画
-inline void AnimationInit(Animation *anim, Texture2D *texture, int frameCount,
-                          float frameTime, bool loop) {
+static inline void AnimationInit(Animation *anim, Texture2D *texture,
+                                 int frameCount, float frameTime, bool loop) {
   anim->spritesheet = texture;
   anim->frameCount = frameCount;
   anim->currentFrame = 0;
@@ -29,7 +29,7 @@ inline void AnimationInit(Animation *anim, Texture2D *texture, int frameCount,
 }
 
 // 每帧更新动画（返回当前帧的源矩形）
-inline Rectangle AnimationUpdate(Animation *anim, float dt) {
+static inline Rectangle AnimationUpdate(Animation *anim, float dt) {
   anim->timer += dt;
   if (anim->timer >= anim->frameTime) {
     anim->timer -= anim->frameTime;
@@ -41,9 +41,8 @@ inline Rectangle AnimationUpdate(Animation *anim, float dt) {
         anim->currentFrame = anim->frameCount - 1;
     }
   }
-  return (Rectangle){static_cast<float>(anim->currentFrame * anim->frameWidth),
-                     0, static_cast<float>(anim->frameWidth),
-                     static_cast<float>(anim->frameHeight)};
+  return (Rectangle){(float)(anim->currentFrame * anim->frameWidth), 0,
+                     (float)(anim->frameWidth), (float)(anim->frameHeight)};
 }
 
 #endif // ANIMATION_H

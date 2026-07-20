@@ -18,11 +18,12 @@ typedef struct Player {
   Animation animations[COUNT];
   PlayerAnimation playerAnimationState;
   bool isOnTheGround;
+  bool facingRight; // 面朝方向
 } Player;
 
-void InitPlayer(Player *player, String *spriteFilePath);
+void InitPlayer(Player *player);
 void UpdatePlayer(Player *player, float dt);
-void DrawPlayer(Player *player);
-void LoadPlayerTexture(Player *player, String *filePath);
+void DrawPlayer(Player *player, Rectangle source);
+void GroundCollision(Player *player);
 
 #endif // PLAYER_H
