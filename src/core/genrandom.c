@@ -1,6 +1,6 @@
 ﻿#include <core/genrandom.h>
 
-int genRandomNumber(int range) {
+static int genRandomNumber(const int range) {
   srand(time(NULL));
 
   if (range <= 0)

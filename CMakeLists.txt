@@ -4,6 +4,10 @@ project(CET VERSION 0.1.0 LANGUAGES C)
 # Generate compile_commands.json for clangd / language servers
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include_directories(include)
+
+file(GLOB_RECURSE CFILES CONFIGURE_DEPENDS src/*.c)
+
 # Add custom Find modules path (for Findraylib.cmake)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -11,42 +15,10 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 list(APPEND CMAKE_PREFIX_PATH "D:/RayLib_MinGW")
 
 # ─── Source files ─────────────────────────────────────────────────────────────
-set(CORE_SOURCES
-    src/core/scene.c
-    src/core/timer.c
-    src/core/resource.c
-)
-
-set(MATH_SOURCES
-    src/math/vector.c
-)
-
-set(INPUT_SOURCES
-    src/input/input.c
-)
-
-set(GRAPHICS_SOURCES
-    src/graphics/animation.c
-    src/graphics/sprite.c
-)
-
-set(ENTITY_SOURCES
-    src/entity/player.c
-)
-
-add_executable(CET
+add_executable(
+    CET
     main.c
-    src/game.c
-    include/game.h
-    include/core/strings.h
-    src/core/strings.c
-    src/player.c
-    include/platform.h
-    include/animation.h
-        include/core/genrandom.h
-        main.c
-        main.c
-        src/core/genrandom.c
+    ${CFILES}
 )
 
 # Try to find raylib from system first (using custom Findraylib.cmake module)
@@ -65,3 +37,13 @@ endif()
 
 target_include_directories(CET PRIVATE include)
 target_link_libraries(CET PRIVATE raylib::raylib)
+
+# Copy assets directory to the executable output directory after each build.
+# This ensures assets are always found next to the binary regardless of IDE,
+# build preset, or deployment scenario.
+add_custom_command(TARGET CET POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    "$<TARGET_FILE_DIR:CET>/assets"
+    COMMENT "Copying assets to build output directory..."
+)

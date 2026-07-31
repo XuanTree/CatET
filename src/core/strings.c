@@ -1,4 +1,5 @@
 #include "core/strings.h"
+#include <stdio.h>
 
 String toString(const char *s) {
   return (String){
@@ -35,6 +36,6 @@ String *delStringRight(String *s, int count) {
   return s;
 }
 
-size_t getLength(String *s) { return s->length; }
-char *getString(String *s) { return s->data; }
-void printString(String *s) { printf("%.*s\n", (int)s->length, s->data); }
+size_t getLength(const String *s) { return s->length; }
+char *getString(const String *s) { return s->data; }
+void printString(const String *s) { printf("%.*s\n", (int)s->length, s->data); }

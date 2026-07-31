@@ -1,9 +1,12 @@
 # IDE Generated files
 .vscode/
 .idea/
+.cr/
+.vs/
 
 # cmake build files
 out/
+build/
 .cmake-build-debug/
 
 # configure files

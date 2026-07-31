@@ -19,8 +19,8 @@ String *delStringRight(String *s, int count);
 String *delStringLeft(String *s, int count);
 
 // Get Information from string
-size_t getLength(String *s);
-char *getString(String *s);
-void printString(String *s);
+size_t getLength(const String *s);
+char *getString(const String *s);
+void printString(const String *s);
 
 #endif // STRINGS_H

@@ -1,5 +1,5 @@
-#ifndef PLATFROM_H
-#define PLATFROM_H
+#ifndef PLATFORM_H
+#define PLATFORM_H
 
 #pragma once
 #include <raylib.h>
@@ -11,4 +11,4 @@ typedef struct Platform {
 
 void LoadPlatformTexture(Platform *platform);
 
-#endif // PLATFROM_H
+#endif // PLATFORM_H
