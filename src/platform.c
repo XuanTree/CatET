@@ -2,20 +2,12 @@
 #include "core/game_config.h"
 #include "raylib.h"
 
-void InitJumpPlatforms(Platform *platform) {
-  // 默认初始化：SMALL 平台并直接加载其纹理。
-  // 该函数须在 InitWindow 之后调用（game.c 满足此顺序），否则不能安全加载纹理。
-  // 若未加载纹理，size 为 0，DrawPlatform 将画不出任何内容。
-  platform->platformType = SMALL;
-  // 默认放置位置，调用方可按关卡设计覆盖 spawnPosition
-  platform->spawnPosition = (Vector2){100, 350};
-  platform->size = (Vector2){0, 0}; // 由 LoadPlatformTexture 按贴图尺寸填充
-  LoadPlatformTexture(platform, SMALL);
-}
-
-void LoadPlatformTexture(Platform *platform, PlatformType platformType) {
+// 内部实现：按 platform->platformType 加载纹理，并把贴图尺寸/顶部留白换算为
+// 世界坐标（乘 GAME_SCALE）存储，与玩家 size 语义一致。仅由 InitJumpPlatforms
+// 调用，不对外暴露。须在 InitWindow 之后调用，否则不能安全加载纹理。
+static void LoadPlatformTexture(Platform *platform) {
   const char *path = NULL;
-  switch (platformType) {
+  switch (platform->platformType) {
   case SMALL:
     path = "%sassets/sprites/platform_1.png";
     break;
@@ -69,28 +61,38 @@ void LoadPlatformTexture(Platform *platform, PlatformType platformType) {
     }
   }
 
-  platform->surfaceOffset = surfaceOffset;
-  // 用贴图原生尺寸作为平台的逻辑尺寸（绘制与碰撞共用）
-  platform->size = (Vector2){(float)scan.width, (float)scan.height};
+  // 统一以“世界坐标（已按 GAME_SCALE 缩放）”存储尺寸与顶部留白：
+  // 绘制与碰撞直接使用字段值，无需再乘 GAME_SCALE。
+  platform->surfaceOffset = surfaceOffset * GAME_SCALE;
+  platform->size = (Vector2){(float)scan.width * GAME_SCALE,
+                             (float)scan.height * GAME_SCALE};
   UnloadImage(scan);
 
   // 纹理加载与原实现一致（与玩家同用 LoadTexture）
   platform->platformTexture =
       LoadTexture(TextFormat(path, GetApplicationDirectory()));
-  platform->platformType = platformType;
 }
 
-void DrawPlatform(Platform *platform, PlatformType platformType) {
-  (void)platformType; // 纹理已由 LoadPlatformTexture 按类型加载，绘制时直接使用
+// 平台唯一初始化入口：设置类型与位置，并加载对应纹理。
+void InitJumpPlatforms(Platform *platform, Vector2 spawnPosition,
+                       PlatformType platformType) {
+  platform->platformType = platformType;
+  // 默认放置位置，调用方可按关卡设计覆盖 spawnPosition
+  platform->spawnPosition = spawnPosition;
+  // 由 LoadPlatformTexture 按贴图尺寸填充；失败时保持 0（绘制与碰撞均跳过）
+  platform->size = (Vector2){0, 0};
+  LoadPlatformTexture(platform);
+}
 
+void DrawPlatform(Platform *platform) {
   Texture2D tex = platform->platformTexture;
-  // 整张贴图作为 source，dest 按平台逻辑尺寸绘制（左上角为锚点）
+  // 整张贴图作为 source，dest 按平台世界坐标尺寸绘制（左上角为锚点）
   Rectangle source = {0, 0, (float)tex.width, (float)tex.height};
   Rectangle dest = {
       .x = platform->spawnPosition.x,
       .y = platform->spawnPosition.y,
-      .width = platform->size.x * GAME_SCALE,
-      .height = platform->size.y * GAME_SCALE,
+      .width = platform->size.x,
+      .height = platform->size.y,
   };
   DrawTexturePro(tex, source, dest, (Vector2){0, 0}, 0.0f, WHITE);
 }
@@ -104,13 +106,12 @@ void PlayerCollision(Player *player, Platform *platform, float dt) {
   if (platform->size.x <= 0.0f || platform->size.y <= 0.0f)
     return;
 
-  // 平台碰撞矩形
+  // 平台碰撞矩形（size/surfaceOffset 已按 GAME_SCALE 换算为世界坐标）
   float platLeft = platform->spawnPosition.x;
-  float platRight = platLeft + platform->size.x * GAME_SCALE;
+  float platRight = platLeft + platform->size.x;
   // 碰撞顶面取“可见表面”而非贴图顶边：贴图顶部常有透明留白，
   // 直接用贴图顶边会让玩家脚悬在可见表面上方（视觉悬浮）。
-  float platTop =
-      platform->spawnPosition.y + platform->surfaceOffset * GAME_SCALE;
+  float platTop = platform->spawnPosition.y + platform->surfaceOffset;
 
   // 玩家脚底（垂直支撑点）
   float playerFeet = player->position.y + player->size.y;

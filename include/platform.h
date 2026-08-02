@@ -16,13 +16,13 @@ typedef struct Platform {
   Texture2D platformTexture;
   PlatformType platformType;
   Vector2 spawnPosition;
-  Vector2 size;        // 贴图原生尺寸（绘制与碰撞的基准）
-  float surfaceOffset; // 贴图顶部透明留白高度（像素）：碰撞顶面从可见表面起算
+  Vector2 size;        // 世界坐标尺寸（贴图尺寸 × GAME_SCALE，绘制与碰撞共用）
+  float surfaceOffset; // 顶部透明留白高度（世界坐标）：碰撞顶面从可见表面起算
 } Platform;
 
-void InitJumpPlatforms(Platform *platform);
-void LoadPlatformTexture(Platform *platform, PlatformType platformType);
-void DrawPlatform(Platform *platform, PlatformType platformType);
+void InitJumpPlatforms(Platform *platform, Vector2 spawnPosition,
+                       PlatformType platformType);
+void DrawPlatform(Platform *platform);
 void PlayerCollision(Player *player, Platform *platform, float dt);
 
 #endif // PLATFORM_H

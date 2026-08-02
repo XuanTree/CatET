@@ -9,6 +9,7 @@ typedef struct TestData {
   const GameApp *app; // 只读引用，不拥有
   Player cat;
   Platform platform;
+  Platform platform_m;
   Rectangle source; // 当前动画帧源矩形
 } TestData;
 
@@ -19,7 +20,9 @@ static void TestEnter(GameScene *self) {
   d->cat = (Player){0};
   InitPlayer(&d->cat);
   d->platform = (Platform){0};
-  InitJumpPlatforms(&d->platform);
+  InitJumpPlatforms(&d->platform, (Vector2){100, 350}, SMALL);
+  d->platform_m = (Platform){0};
+  InitJumpPlatforms(&d->platform_m, (Vector2){300, 200}, MEDIUM);
 }
 
 static void TestUpdate(GameScene *self, float dt) {
@@ -31,6 +34,7 @@ static void TestUpdate(GameScene *self, float dt) {
   // 若不重置，离开平台边缘后 isOnTheGround 仍为 true，玩家会悬空。
   d->cat.isOnTheGround = false;
   PlayerCollision(&d->cat, &d->platform, dt);
+  PlayerCollision(&d->cat, &d->platform_m, dt);
   GroundCollision(&d->cat);
 
   // 更新动画（记录当前帧源矩形供绘制使用）
@@ -42,7 +46,8 @@ static void TestDraw(GameScene *self) {
   TestData *d = (TestData *)self->data;
 
   // 绘制平台
-  DrawPlatform(&d->platform, SMALL);
+  DrawPlatform(&d->platform);
+  DrawPlatform(&d->platform_m);
 
   // 绘制玩家
   DrawPlayer(&d->cat, d->source);
