@@ -1,0 +1,38 @@
+#ifndef GAMEAPP_H
+#define GAMEAPP_H
+
+#pragma once
+#include <raylib.h>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 框架层：统一管理窗口、图标、音频、固定分辨率渲染目标与呈现逻辑。
+// 所有场景复用同一套「固定分辨率渲染 + 等比缩放呈现」流程，
+// 缩放、居中、黑边、全屏切换集中在 GameAppPresent，一处改动全局生效。
+// ─────────────────────────────────────────────────────────────────────────────
+
+typedef struct GameApp {
+  int logicWidth;       // 逻辑分辨率宽（固定）
+  int logicHeight;      // 逻辑分辨率高（固定）
+  RenderTexture target; // 固定分辨率渲染目标，避免放大后画面模糊
+  Image icon;           // 窗口图标（保留以便最后卸载）
+} GameApp;
+
+// 初始化窗口、图标、音频设备与固定分辨率渲染目标。
+// 必须在创建任何场景之前调用（LoadTexture 依赖 InitWindow 完成）。
+GameApp GameAppInit(int logicWidth, int logicHeight, const char *title);
+
+// 场景绘制：开始向固定分辨率渲染目标绘制（自动清屏为 RAYWHITE）
+void GameAppBegin(GameApp *app);
+// 场景绘制：结束渲染目标绘制
+void GameAppEnd(GameApp *app);
+
+// 每帧末尾：将渲染结果等比缩放到整个窗口并呈现（保持宽高比居中，多余黑边）
+void GameAppPresent(GameApp *app);
+
+// 全局输入：F11 / Alt+Enter 全屏切换（每帧主循环开头调用一次）
+void GameAppPollGlobalInput(void);
+
+// 释放渲染目标、图标、音频设备与窗口
+void GameAppClose(GameApp *app);
+
+#endif // GAMEAPP_H

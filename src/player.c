@@ -1,5 +1,6 @@
 #include "player.h"
 #include "animation.h"
+#include "core/game_config.h"
 #include "core/timer.h"
 #include "raylib.h"
 #include <math.h>
@@ -10,9 +11,10 @@
 #define JUMP_SPEED (-580.0f)
 #define JUMP_HOLD_FORCE 1500.0f // 按住空格期间额外向上加速度
 #define JUMP_HOLD_MAX 0.06f     // 最大跳跃增强时长（秒），防止无限升高
-#define FRICTION 0.85f
-#define PLAYER_WIDTH 48.0f
-#define PLAYER_HEIGHT 48.0f
+#define FRICTION 0.25f
+// 玩家帧贴图为 16×16，与全局 GAME_SCALE 统一缩放，保证与平台同比例
+#define PLAYER_WIDTH (16.0f * GAME_SCALE)
+#define PLAYER_HEIGHT (16.0f * GAME_SCALE)
 #define AFK_TIMEOUT 20.0f // 挂机 20 秒后自动进入睡眠动画
 
 void InitPlayer(Player *player) {
@@ -26,7 +28,8 @@ void InitPlayer(Player *player) {
   player->isOnTheGround = false;
   player->playerAnimationState = IDLE;
   player->facingRight = true;
-  InitTimer(&player->afkTimer); // 初始化挂机计时器
+  InitTimer(&player->jumpHoldTimer); // 初始化跳跃增强计时器（防止未初始化读取）
+  InitTimer(&player->afkTimer);      // 初始化挂机计时器
   // 资源统一从 exe 同级的 assets/ 目录加载（CMake POST_BUILD 自动复制）
 
   // 初始化 IDLE 动画（8 帧，每帧 0.1 秒，循环播放）
@@ -137,18 +140,18 @@ void UpdatePlayer(Player *player, float dt) {
 }
 
 void DrawPlayer(Player *player, Rectangle source) {
-  float scale = 3.f;
   Rectangle src = source;
   if (!player->facingRight) {
     // 源矩形水平翻转：x 移到帧右边缘，宽度取负
     src.x = source.x + source.width;
     src.width = -source.width;
   }
+  // 绘制尺寸与碰撞 player->size 严格一致，避免精灵缩放与碰撞盒错位
   Rectangle dest = {
       .x = player->position.x,
       .y = player->position.y,
-      .width = source.width * scale,
-      .height = source.height * scale,
+      .width = player->size.x,
+      .height = player->size.y,
   };
   // 根据玩家动画状态选择对应的纹理绘制
   switch (player->playerAnimationState) {

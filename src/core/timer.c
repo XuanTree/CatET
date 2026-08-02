@@ -4,6 +4,7 @@ void InitTimer(Timer *timer) {
   timer->isTimerStart = false;
   timer->isTimerPause = false;
   timer->startTime = GetTime();
+  timer->elapsedTime = 0; // 必须清零，否则未初始化读取属未定义行为
 }
 
 void UpdateTimer(Timer *timer) {

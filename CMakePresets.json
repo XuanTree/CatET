@@ -13,6 +13,19 @@
                 "CMAKE_CXX_COMPILER": "D:/MinGW64/bin/g++.exe",
                 "CMAKE_BUILD_TYPE": "Debug"
             }
+        },
+        {
+            "name": "gcc16-rel",
+            "displayName": "GCC 16.1.0 x86_64-w64-mingw32 (Release)",
+            "description": "正在使用编译器: C = D:\\MinGW64\\bin\\gcc.exe, CXX = D:\\MinGW64\\bin\\g++.exe (Release)",
+            "generator": "MinGW Makefiles",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
+                "CMAKE_C_COMPILER": "D:/MinGW64/bin/gcc.exe",
+                "CMAKE_CXX_COMPILER": "D:/MinGW64/bin/g++.exe",
+                "CMAKE_BUILD_TYPE": "Release"
+            }
         }
     ]
 }

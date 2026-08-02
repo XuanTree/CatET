@@ -1,87 +1,35 @@
 #include "game.h"
-#include "player.h"
-#include "raylib.h"
-#include <math.h>
+#include "core/gameapp.h"
+#include "core/gamestack.h"
+#include "scenes/scene_test.h"
 
 // 逻辑分辨率固定不变，窗口放大时通过 RenderTexture 等比缩放，画面不变糊
 #define LOGIC_WIDTH 640
 #define LOGIC_HEIGHT 480
 
 void Run() {
-  // 允许窗口自由缩放
-  SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-  InitWindow(LOGIC_WIDTH, LOGIC_HEIGHT, "CatET");
-  // 限制最小窗口尺寸，避免被压缩得过小
-  SetWindowMinSize(LOGIC_WIDTH, LOGIC_HEIGHT);
+  // 框架初始化：窗口、图标、音频、固定分辨率渲染目标
+  GameApp app = GameAppInit(LOGIC_WIDTH, LOGIC_HEIGHT, "CatET");
 
-  Image iconImage = LoadImage(
-      TextFormat("%sassets/sprites/icon.png", GetApplicationDirectory()));
-  SetWindowIcon(iconImage);
+  // 创建场景栈并压入初始场景（测试场景，保持原玩法行为不变）
+  GameStack *stack = GameStackCreate();
+  GameStackPush(stack, TestSceneCreate(&app));
 
-  // 固定分辨率渲染目标：内部始终按 800x600 渲染，防止放大后画面模糊
-  RenderTexture target = LoadRenderTexture(LOGIC_WIDTH, LOGIC_HEIGHT);
-  // 双线性过滤，让缩放后的画面保持平滑清晰
-  SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
+  // 主循环：事件 → 更新 → 绘制
+  while (!WindowShouldClose() && !GameStackWantsQuit(stack)) {
+    GameAppPollGlobalInput(); // F11 / Alt+Enter 全屏切换
 
-  Player cat;
-  InitPlayer(&cat);
-
-  SetTargetFPS(60);
-  InitAudioDevice();
-
-  while (!WindowShouldClose()) {
-    // F11 或 Alt+Enter 切换全屏
-    if (IsKeyPressed(KEY_F11) ||
-        (IsKeyDown(KEY_LEFT_ALT) && IsKeyPressed(KEY_ENTER))) {
-      ToggleFullscreen();
-    }
-
-    // 更新逻辑
     float dt = GetFrameTime();
-    UpdatePlayer(&cat, dt);
-    GroundCollision(&cat);
+    GameStackUpdate(stack, dt); // 帧首 flush 切换请求 + 驱动栈顶场景
 
-    // 更新动画
-    Rectangle source =
-        AnimationUpdate(&cat.animations[cat.playerAnimationState], dt);
-
-    // 1. 先绘制到固定分辨率渲染目标
-    BeginTextureMode(target);
-    ClearBackground(RAYWHITE);
-
-    // 绘制玩家
-    DrawPlayer(&cat, source);
-
-    // 绘制地面
-    DrawRectangle(0, LOGIC_HEIGHT - 50, LOGIC_WIDTH, 50, LIGHTGRAY);
-
-    EndTextureMode();
-
-    // 2. 将渲染结果等比缩放到整个窗口（保持宽高比并居中，多余区域用黑边）
-    BeginDrawing();
-    ClearBackground(BLACK);
-
-    float screenW = (float)GetScreenWidth();
-    float screenH = (float)GetScreenHeight();
-    float scale = fminf(screenW / LOGIC_WIDTH, screenH / LOGIC_HEIGHT);
-    float destW = LOGIC_WIDTH * scale;
-    float destH = LOGIC_HEIGHT * scale;
-    Rectangle dest = {
-        .x = (screenW - destW) * 0.5f,
-        .y = (screenH - destH) * 0.5f,
-        .width = destW,
-        .height = destH,
-    };
-    // 注意：RenderTexture 的纹理在 OpenGL 中是上下颠倒的，source 高度取负
-    Rectangle sourceTex = {0, 0, LOGIC_WIDTH, -LOGIC_HEIGHT};
-    DrawTexturePro(target.texture, sourceTex, dest, (Vector2){0, 0}, 0.0f,
-                   WHITE);
-
-    EndDrawing();
+    // 统一绘制：先绘制到固定分辨率渲染目标，再等比缩放到窗口
+    GameAppBegin(&app);
+    GameStackDraw(stack);
+    GameAppEnd(&app);
+    GameAppPresent(&app);
   }
 
-  UnloadRenderTexture(target);
-  UnloadImage(iconImage);
-  CloseAudioDevice();
-  CloseWindow();
+  // 清理：销毁场景栈（各场景 onExit + 释放）→ 框架释放资源 → 关窗
+  GameStackDestroy(stack);
+  GameAppClose(&app);
 }
