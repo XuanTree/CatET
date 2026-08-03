@@ -1,4 +1,4 @@
-#include "core/timer.h"
+#include "tools/timer.h"
 
 void InitTimer(Timer *timer) {
   timer->isTimerStart = false;

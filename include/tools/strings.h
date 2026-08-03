@@ -10,6 +10,8 @@ typedef struct String {
   size_t length;
 } String;
 
+// 这个头文件我自己都不知道写了有什么用
+
 // Convert C string to String
 String toString(const char *s);
 void freeString(const String *s);

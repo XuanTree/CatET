@@ -2,9 +2,9 @@
 #define PLAYER_H
 
 #pragma once
-#include "animation.h"
-#include "core/strings.h"
-#include "core/timer.h"
+#include "tools/animation.h"
+#include "tools/strings.h"
+#include "tools/timer.h"
 #include <raylib.h>
 
 typedef enum PlayerAnimation {

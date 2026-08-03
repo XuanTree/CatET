@@ -1,8 +1,8 @@
 #include "player.h"
-#include "animation.h"
 #include "core/game_config.h"
-#include "core/timer.h"
 #include "raylib.h"
+#include "tools/animation.h"
+#include "tools/timer.h"
 #include <math.h>
 #include <stdbool.h>
 

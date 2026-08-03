@@ -1,5 +1,4 @@
-#include "core/strings.h"
-#include <stdio.h>
+#include "tools/strings.h"
 
 String toString(const char *s) {
   return (String){

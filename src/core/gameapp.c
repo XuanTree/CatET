@@ -1,7 +1,7 @@
 #include "core/gameapp.h"
 #include <math.h>
 
-GameApp GameAppInit(int logicWidth, int logicHeight, const char *title) {
+GameApp GameAppInit(const int logicWidth, const int logicHeight, const char *title) {
   GameApp app = {0};
   app.logicWidth = logicWidth;
   app.logicHeight = logicHeight;

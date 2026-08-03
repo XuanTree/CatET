@@ -2,7 +2,7 @@
 #define GAME_H
 
 #pragma once
-#include "core/strings.h"
+#include "tools/strings.h"
 #include "platform.h"
 #include "player.h"
 #include "raylib.h"
