@@ -11,8 +11,8 @@ file(GLOB_RECURSE CFILES CONFIGURE_DEPENDS src/*.c)
 # Add custom Find modules path (for Findraylib.cmake)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Add raylib local installation to search path (MinGW build at D:/RayLib_MinGW)
-list(APPEND CMAKE_PREFIX_PATH "D:/RayLib_MinGW")
+# Add raylib local installation to search path
+list(APPEND CMAKE_PREFIX_PATH "D:/Packages/raylib")
 
 # ─── Source files ─────────────────────────────────────────────────────────────
 add_executable(

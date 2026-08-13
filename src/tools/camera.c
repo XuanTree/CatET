@@ -22,6 +22,7 @@ void UpdateCameraSmoothFollow(Camera2D *camera, Vector2 target, float dt) {
   // minEffectLength：目标与相机距离小于该值视为「已对齐」，直接贴合，消除尾随抖动
   // fractionSpeed：每帧按距离的一定比例逼近，距离越远追得越快
   // minSpeed：保证最小追赶速度，避免距离稍远时相机慢得像卡住
+
   const float minSpeed = 30.0f;
   const float minEffectLength = 10.0f;
   const float fractionSpeed = 0.8f;

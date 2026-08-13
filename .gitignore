@@ -11,3 +11,5 @@ build/
 
 # configure files
 .clangd
+plans/
+.out-of-code-insights/

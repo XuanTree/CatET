@@ -7,7 +7,6 @@
 #include "player.h"
 #include "raylib.h"
 #include <math.h>
-#include <raylib.h>
 
 void Run();
 

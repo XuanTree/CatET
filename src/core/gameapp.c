@@ -1,7 +1,7 @@
 #include "core/gameapp.h"
-#include <math.h>
 
-GameApp GameAppInit(const int logicWidth, const int logicHeight, const char *title) {
+GameApp GameAppInit(const int logicWidth, const int logicHeight,
+                    const char *title) {
   GameApp app = {0};
   app.logicWidth = logicWidth;
   app.logicHeight = logicHeight;
@@ -23,6 +23,7 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight, const char *tit
   // 双线性过滤，让缩放后的画面保持平滑清晰
   SetTextureFilter(app.target.texture, TEXTURE_FILTER_BILINEAR);
 
+  app.isPaused = false;
   SetTargetFPS(60);
   InitAudioDevice();
 
@@ -77,4 +78,16 @@ void GameAppClose(GameApp *app) {
   UnloadImage(app->icon);
   CloseAudioDevice();
   CloseWindow();
+}
+
+void GameAppPaused(GameApp *app) {
+  if (IsKeyDown(KEY_ESCAPE)) {
+    app->isPaused = true;
+  }
+}
+
+void GameAppResume(GameApp *app) {
+  if (IsKeyDown(KEY_ESCAPE)) {
+    app->isPaused = false;
+  }
 }

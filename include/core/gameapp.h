@@ -2,7 +2,9 @@
 #define GAMEAPP_H
 
 #pragma once
+#include <math.h>
 #include <raylib.h>
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 框架层：统一管理窗口、图标、音频、固定分辨率渲染目标与呈现逻辑。
@@ -14,7 +16,8 @@ typedef struct GameApp {
   int logicWidth;       // 逻辑分辨率宽（固定）
   int logicHeight;      // 逻辑分辨率高（固定）
   RenderTexture target; // 固定分辨率渲染目标，避免放大后画面模糊
-  Image icon;           // 窗口图标（保留以便最后卸载）
+  bool isPaused;
+  Image icon; // 窗口图标（保留以便最后卸载）
 } GameApp;
 
 // 初始化窗口、图标、音频设备与固定分辨率渲染目标。
@@ -34,5 +37,11 @@ void GameAppPollGlobalInput(void);
 
 // 释放渲染目标、图标、音频设备与窗口
 void GameAppClose(GameApp *app);
+
+// 全局游戏暂停
+void GameAppPaused(GameApp *app);
+
+// 全局游戏继续
+void GameAppResume(GameApp *app);
 
 #endif // GAMEAPP_H
