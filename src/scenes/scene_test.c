@@ -1,6 +1,6 @@
 #include "scenes/scene_test.h"
-#include "platform.h"
-#include "player.h"
+#include "entities/platform.h"
+#include "entities/player.h"
 #include "raylib.h"
 #include "tools/camera.h"
 #include <stdbool.h>

@@ -1,4 +1,4 @@
-#include "player.h"
+#include "entities/player.h"
 #include "core/game_config.h"
 #include "raylib.h"
 #include "tools/animation.h"

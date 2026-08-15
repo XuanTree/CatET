@@ -2,10 +2,10 @@
 #define GAME_H
 
 #pragma once
-#include "tools/strings.h"
-#include "platform.h"
-#include "player.h"
+#include "entities/platform.h"
+#include "entities/player.h"
 #include "raylib.h"
+#include "tools/strings.h"
 #include <math.h>
 
 void Run();

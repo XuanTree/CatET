@@ -1,4 +1,4 @@
-#include "platform.h"
+#include "entities/platform.h"
 #include "core/game_config.h"
 #include "raylib.h"
 
