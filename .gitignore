@@ -13,3 +13,6 @@ build/
 .clangd
 plans/
 .out-of-code-insights/
+
+# some assets files
+assets/sounds/

@@ -24,6 +24,10 @@ typedef enum GameSceneFlags {
   GAME_SCENE_DRAW_WHEN_HIDDEN = 1 << 1,   // 被覆盖时仍绘制（暂停的半透明底层）
 } GameSceneFlags;
 
+// 栈核心采用不透明结构，外部只通过 API 操作（前向声明，供 GameScene.owner
+// 使用）
+typedef struct GameStack GameStack;
+
 // 场景：一个可独立运行的最小游戏单元（菜单、关卡、暂停、结算都算场景）。
 // 通过工厂函数（如 TestSceneCreate）创建，栈内 malloc；
 // 销毁由 GameStack 统一负责（先 onExit 再 free，data 一并释放）。
@@ -37,11 +41,9 @@ struct GameScene {
   SceneEventFn onResume;  // 重新回到栈顶时触发（可为 NULL）
   void *data;             // 场景私有数据（栈负责释放）
   GameSceneFlags flags;
+  GameStack *owner; // 所属栈：压入时由 GameStack 注入，场景回调可据此切换
+  bool pauseable;   // 是否允许按 ESC 调出暂停界面（开始界面等菜单设为 false）
 };
-
-// 栈核心采用不透明结构，外部只通过 API 操作
-typedef struct GameStack GameStack;
-
 // 生命周期
 GameStack *GameStackCreate(void);
 void GameStackDestroy(GameStack *stack);

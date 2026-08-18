@@ -74,6 +74,7 @@ static void PushImmediate(GameStack *stack, GameScene *scene) {
     if (top->onPause)
       top->onPause(top);
   }
+  scene->owner = stack; // 注入所属栈，供场景回调进行切换
   EnsureSceneCapacity(stack);
   stack->scenes[stack->size++] = scene;
   if (scene->onEnter)
@@ -102,6 +103,7 @@ static void ReplaceImmediate(GameStack *stack, GameScene *scene) {
     PushImmediate(stack, scene);
     return;
   }
+  scene->owner = stack; // 注入所属栈
   GameScene *top = stack->scenes[--stack->size];
   FreeScene(top);
   EnsureSceneCapacity(stack);
@@ -115,6 +117,7 @@ static void ReplaceImmediate(GameStack *stack, GameScene *scene) {
 static void ClearToImmediate(GameStack *stack, GameScene *scene) {
   if (!scene)
     return;
+  scene->owner = stack; // 注入所属栈
   for (int i = 0; i < stack->size; i++)
     FreeScene(stack->scenes[i]);
   stack->size = 0;

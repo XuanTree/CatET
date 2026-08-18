@@ -96,7 +96,8 @@ GameScene *TestSceneCreate(const GameApp *app) {
 
   scene->name = "TestScene";
   scene->data = data;
-  scene->flags = GAME_SCENE_NONE;
+  scene->flags = GAME_SCENE_DRAW_WHEN_HIDDEN; // 暂停时仍绘制关卡作为背景
+  scene->pauseable = true;                    // 关卡内允许按 ESC 调出暂停界面
   scene->onEnter = TestEnter;
   scene->onUpdate = TestUpdate;
   scene->onDraw = TestDraw;
