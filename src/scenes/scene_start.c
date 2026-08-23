@@ -1,5 +1,6 @@
 #include "scenes/scene_start.h"
 #include "scenes/scene_test.h"
+#include "scenes/scene_transition.h"
 #include "tools/menu.h"
 #include "tools/raygui.h"
 #include <raylib.h>
@@ -47,8 +48,10 @@ static void StartUpdate(GameScene *self, float dt) {
   // 消费动作（raygui 交互在 Draw 阶段写入，此处统一执行切换/退出）
   switch (d->action) {
   case START_ACTION_PLAY:
-    // 用测试关卡替换当前开始界面
-    GameStackReplace(self->owner, TestSceneCreate(d->app));
+    // 经过渡场景进入测试关卡：先替换为过渡场景（淡入淡出遮罩），
+    // 过渡结束后再自动替换为目标关卡，见 scene_transition.h。
+    GameStackReplace(self->owner,
+                     TransitionSceneCreate(d->app, TestSceneCreate(d->app)));
     break;
   case START_ACTION_SETTINGS:
     // 设置界面暂未实现，仅占位

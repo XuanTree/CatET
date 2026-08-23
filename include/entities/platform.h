@@ -23,6 +23,6 @@ typedef struct Platform {
 void InitJumpPlatforms(Platform *platform, Vector2 spawnPosition,
                        PlatformType platformType);
 void DrawPlatform(Platform *platform);
-void PlayerCollision(Player *player, Platform *platform, float dt);
+void PlayerCollision(Player *player, Platform *platform);
 
 #endif // PLATFORM_H

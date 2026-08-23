@@ -18,8 +18,8 @@
 #define AFK_TIMEOUT 20.0f // 挂机 20 秒后自动进入睡眠动画
 
 void InitPlayer(Player *player) {
-  player->health = 5;
-  player->maxHealth = 5;
+  player->health = 100.f;
+  player->maxHealth = 100.f;
 
   player->position = (Vector2){.x = 100, .y = 300};
   player->velocity = (Vector2){.x = 0, .y = 0};
@@ -175,11 +175,40 @@ void DrawPlayer(Player *player, Rectangle source) {
   }
 }
 
+// 纯矩形地面碰撞：地面视为一个静态矩形（与 scene_test 绘制一致，
+// 顶面位于 y = LOGIC_HEIGHT - 50 = 430）。用玩家矩形与地面矩形做
+// AABB 重叠检测（CheckCollisionRecs），重叠时把玩家推出地面：
+//   - 从上方向下落到地面顶面 → 站在地面上（isOnTheGround = true）
+//   - 从地面下方顶头（防御性处理）→ 阻止穿入
 void GroundCollision(Player *player) {
-  float groundY = 480 - 50; // 地面在 y = 550 处
-  if (player->position.y + player->size.y >= groundY) {
-    player->position.y = groundY - player->size.y;
-    player->velocity.y = 0;
+  if (!player)
+    return;
+
+  // 地面矩形：与绘制保持一致（左上角 (0, 430)，宽 1000，高 50）
+  const float groundTop = 480.0f - 50.0f;
+  const Rectangle ground = {
+      .x = 0, .y = groundTop, .width = 1000.0f, .height = 50.0f};
+  const Rectangle playerRect = {
+      .x = player->position.x,
+      .y = player->position.y,
+      .width = player->size.x,
+      .height = player->size.y,
+  };
+
+  // 纯矩形重叠检测：玩家矩形与地面矩形无重叠则不碰撞
+  if (!CheckCollisionRecs(playerRect, ground))
+    return;
+
+  // 重叠后按相对位置 / 速度方向解决碰撞
+  if (player->velocity.y >= 0.0f &&
+      player->position.y + player->size.y >= groundTop) {
+    // 下落且脚底已触及地面顶面 → 落地
+    player->position.y = groundTop - player->size.y;
+    player->velocity.y = 0.0f;
     player->isOnTheGround = true;
+  } else if (player->velocity.y < 0.0f && player->position.y <= groundTop) {
+    // 上升且头顶已触及地面 → 顶头（防御：阻止穿出地面底部）
+    player->position.y = groundTop;
+    player->velocity.y = 0.0f;
   }
 }

@@ -17,8 +17,8 @@ typedef enum PlayerAnimation {
 } PlayerAnimation;
 
 typedef struct Player {
-  int health;
-  int maxHealth;
+  float health;
+  float maxHealth;
   Vector2 position;
   Vector2 velocity;
   Texture2D idleTexture;

@@ -38,6 +38,7 @@ void Run() {
 
     // 暂停时冻结逻辑时间（场景切换请求仍每帧 flush）
     float dt = app.isPaused ? 0.0f : GetFrameTime();
+    app.runTime += dt;          // 全局运行计时：暂停时不计，供关卡 HUD 显示
     GameStackUpdate(stack, dt); // 帧首 flush 切换请求 + 驱动栈顶场景
 
     // 统一绘制：先绘制到固定分辨率渲染目标，再等比缩放到窗口

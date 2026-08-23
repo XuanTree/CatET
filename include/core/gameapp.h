@@ -16,6 +16,7 @@ typedef struct GameApp {
   int logicHeight;      // 逻辑分辨率高（固定）
   RenderTexture target; // 固定分辨率渲染目标，避免放大后画面模糊
   bool isPaused;
+  float runTime; // 全局关卡运行计时（秒），暂停时不计，供关卡 HUD / 速通参考
   Image icon;    // 窗口图标（保留以便最后卸载）
   Sound uiSound; // UI 选中音效（开始/暂停菜单切换选中项时播放）
 } GameApp;

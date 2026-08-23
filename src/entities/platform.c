@@ -97,41 +97,47 @@ void DrawPlatform(Platform *platform) {
   DrawTexturePro(tex, source, dest, (Vector2){0, 0}, 0.0f, WHITE);
 }
 
-// 一向上平台碰撞：仅当玩家「下落」且「水平范围与平台重叠」时判定。
-// 用本帧位移反推上一帧脚底位置，做扫掠检测，避免高速下落穿透平台。
-void PlayerCollision(Player *player, Platform *platform, float dt) {
+// 纯矩形平台碰撞：平台视为一个静态矩形，碰撞面取可见表面（忽略顶部
+// 透明留白 surfaceOffset）。用玩家矩形与平台矩形做 AABB 重叠检测
+// （CheckCollisionRecs），重叠时按相对位置 / 速度方向解决碰撞：
+//   - 玩家从上方落到平台顶面 → 站到平台上（isOnTheGround = true）
+//   - 玩家从下方顶头 → 阻止穿入平台
+void PlayerCollision(Player *player, Platform *platform) {
   if (!player || !platform)
     return;
   // 仅当贴图已加载（尺寸有效）时参与碰撞
   if (platform->size.x <= 0.0f || platform->size.y <= 0.0f)
     return;
 
-  // 平台碰撞矩形（size/surfaceOffset 已按 GAME_SCALE 换算为世界坐标）
-  float platLeft = platform->spawnPosition.x;
-  float platRight = platLeft + platform->size.x;
-  // 碰撞顶面取“可见表面”而非贴图顶边：贴图顶部常有透明留白，
-  // 直接用贴图顶边会让玩家脚悬在可见表面上方（视觉悬浮）。
-  float platTop = platform->spawnPosition.y + platform->surfaceOffset;
+  // 平台碰撞矩形（size/surfaceOffset 已按 GAME_SCALE 换算为世界坐标）：
+  // 顶面从可见表面起算，忽略贴图顶部透明留白，避免玩家脚悬空。
+  const float platTop = platform->spawnPosition.y + platform->surfaceOffset;
+  const Rectangle platformRect = {
+      .x = platform->spawnPosition.x,
+      .y = platTop,
+      .width = platform->size.x,
+      .height = platform->size.y - platform->surfaceOffset,
+  };
+  const Rectangle playerRect = {
+      .x = player->position.x,
+      .y = player->position.y,
+      .width = player->size.x,
+      .height = player->size.y,
+  };
 
-  // 玩家脚底（垂直支撑点）
-  float playerFeet = player->position.y + player->size.y;
-
-  // 一向上平台：只在下落（velocity.y >= 0）时检测，从下方撞顶不成立
-  if (player->velocity.y < 0.0f)
+  // 纯矩形重叠检测：玩家矩形与平台矩形无重叠则不碰撞
+  if (!CheckCollisionRecs(playerRect, platformRect))
     return;
 
-  // 水平支撑判定：使用玩家水平中心点。
-  // 若用整个身体宽度判断，玩家走到平台边缘时大半身体悬空仍会被判定为着地，
-  // 表现为"悬浮在空中不掉落"。改用中心点后，中心一旦离开平台范围即失去支撑。
-  float playerCenterX = player->position.x + player->size.x * 0.5f;
-  if (playerCenterX <= platLeft || playerCenterX >= platRight)
-    return;
-
-  // 上一帧脚底位置 = 当前脚底 - 本帧位移（近似，dt 需与玩家位移用同一帧率）
-  float prevFeet = playerFeet - player->velocity.y * dt;
-
-  // 脚底在本帧内从平台顶面上方穿过顶面 → 判定落在平台上
-  if (prevFeet <= platTop && playerFeet >= platTop) {
+  // 单向平台语义：平台只提供「上方支撑」，玩家从下方/侧面穿过一律不响应。
+  // 用玩家重心相对平台顶面的位置做判定，规避两类误判：
+  //   -
+  //   仅看脚底：玩家从平台下方水平经过（脚底已低于顶面）时被误判落地、挤上平台；
+  //   -
+  //   增加顶头分支：玩家从下方起跳会撞到平台，违背「从下方可穿过」的单向设计。
+  // 因此只处理「下落且重心仍在平台顶面上方」这一种情形 → 从上方落到平台。
+  const float playerCenterY = player->position.y + player->size.y * 0.5f;
+  if (player->velocity.y >= 0.0f && playerCenterY < platTop) {
     player->position.y = platTop - player->size.y;
     player->velocity.y = 0.0f;
     player->isOnTheGround = true;
