@@ -38,9 +38,10 @@ static void FailUpdate(GameScene *self, float dt) {
   // 键盘导航：Z 确认当前选中项。失败界面无上级菜单，X 不做返回操作。
   const int prevSelected = d->nav.selected;
   MenuAction act = MenuNavUpdate(&d->nav);
-  // 选中项切换（键盘 W/S/↑↓）时播放 UI 选中音效
-  if (d->nav.selected != prevSelected) {
-    PlaySound(d->app->uiSound);
+  // 选中项切换（W/S/↑↓）或确认（Z）时播放 UI 音效
+  if (d->nav.selected != prevSelected || act == MENU_ACTION_CONFIRM) {
+    if (d->app->uiSoundValid)
+      PlaySound(d->app->uiSound);
   }
   if (act == MENU_ACTION_CONFIRM) {
     d->action = kFailActions[d->nav.selected];
@@ -69,17 +70,19 @@ static void FailDraw(GameScene *self) {
   // 全屏不透明深色底：失败画面为全屏场景（替换了关卡），不依赖下层绘制
   DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.92f));
 
-  // 标题
+  // 标题（使用全局像素字体）
   const char *title = "GAME OVER";
   const int titleSize = 44;
-  DrawText(title, (screenW - MeasureText(title, titleSize)) / 2,
-           screenH / 4 - titleSize / 2, titleSize, RED);
+  GameAppDrawText(d->app, title,
+                  (screenW - GameAppMeasureText(d->app, title, titleSize)) / 2,
+                  screenH / 4 - titleSize / 2, titleSize, RED);
 
   // 副标题
   const char *subtitle = "Your HP reached 0!";
   const int subSize = 18;
-  DrawText(subtitle, (screenW - MeasureText(subtitle, subSize)) / 2,
-           screenH / 4 + titleSize / 2 + 12, subSize, LIGHTGRAY);
+  GameAppDrawText(d->app, subtitle,
+                  (screenW - GameAppMeasureText(d->app, subtitle, subSize)) / 2,
+                  screenH / 4 + titleSize / 2 + 12, subSize, LIGHTGRAY);
 
   // 按钮垂直排列
   const float btnW = 200;
@@ -89,9 +92,12 @@ static void FailDraw(GameScene *self) {
   const float gap = 14;
 
   // 底部键盘操作提示（失败界面无返回项，故只提示移动与确认）
+  // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍，避免像素字点采样在
+  // 非整数倍（14px）缩放下字形下半部分像素丢失导致提示显示不全。
   const char *hint = "Move: W/S or Arrows    Confirm: Z";
-  DrawText(hint, (screenW - MeasureText(hint, 14)) / 2, screenH - 24, 14,
-           LIGHTGRAY);
+  GameAppDrawText(d->app, hint,
+                  (screenW - GameAppMeasureText(d->app, hint, 16)) / 2,
+                  screenH - 24, 16, LIGHTGRAY);
 
   for (int i = 0; i < FAIL_ITEM_COUNT; i++) {
     Rectangle rec = {

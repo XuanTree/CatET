@@ -38,6 +38,10 @@ void Run() {
 
     // 暂停时冻结逻辑时间（场景切换请求仍每帧 flush）
     float dt = app.isPaused ? 0.0f : GetFrameTime();
+    // 限制单帧步长：启动/卡顿瞬间 GetFrameTime 可能异常偏大，导致玩家单帧位移
+    // 超过碰撞体厚度而“穿墙”，进而触发错误的碰撞/场景切换（迷宫崩溃根源）。
+    if (dt > 0.05f)
+      dt = 0.05f;
     app.runTime += dt;          // 全局运行计时：暂停时不计，供关卡 HUD 显示
     GameStackUpdate(stack, dt); // 帧首 flush 切换请求 + 驱动栈顶场景
 

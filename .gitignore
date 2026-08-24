@@ -4,6 +4,9 @@
 .cr/
 .vs/
 
+# AI Helps a lot
+.codewhale/
+
 # cmake build files
 out/
 build/
@@ -16,3 +19,4 @@ plans/
 
 # some assets files
 assets/sounds/
+assets/fonts/

@@ -39,9 +39,10 @@ static void PauseUpdate(GameScene *self, float dt) {
   // 此处不再检测 ESC，避免同一 ESC 事件导致刚推入的暂停界面同帧被弹出。
   const int prevSelected = d->nav.selected;
   MenuAction act = MenuNavUpdate(&d->nav);
-  // 选中项切换（键盘 W/S/↑↓）时播放 UI 选中音效
-  if (d->nav.selected != prevSelected) {
-    PlaySound(d->app->uiSound);
+  // 选中项切换（W/S/↑↓）、确认（Z）或返回（X）时播放 UI 音效
+  if (d->nav.selected != prevSelected || act != MENU_ACTION_NONE) {
+    if (d->app->uiSoundValid)
+      PlaySound(d->app->uiSound);
   }
   if (act == MENU_ACTION_BACK) {
     d->app->isPaused = false;
@@ -81,11 +82,12 @@ static void PauseDraw(GameScene *self) {
   // 半透明遮罩盖在下层关卡之上（下层 TestScene 已标记 DRAW_WHEN_HIDDEN）
   DrawRectangle(0, 0, screenW, screenH, Fade(BLACK, 0.55f));
 
-  // 标题
+  // 标题（使用全局像素字体）
   const char *title = "PAUSED";
   const int titleSize = 40;
-  DrawText(title, (screenW - MeasureText(title, titleSize)) / 2,
-           screenH / 4 - titleSize / 2, titleSize, WHITE);
+  GameAppDrawText(d->app, title,
+                  (screenW - GameAppMeasureText(d->app, title, titleSize)) / 2,
+                  screenH / 4 - titleSize / 2, titleSize, WHITE);
 
   // 按钮垂直排列
   const float btnW = 200;
@@ -95,9 +97,12 @@ static void PauseDraw(GameScene *self) {
   const float gap = 14;
 
   // 底部键盘操作提示
+  // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍，避免像素字点采样在
+  // 非整数倍（14px）缩放下字形下半部分像素丢失导致提示显示不全。
   const char *hint = "Move: W/S or Arrows    Confirm: Z    Back: X / ESC";
-  DrawText(hint, (screenW - MeasureText(hint, 14)) / 2, screenH - 24, 14,
-           LIGHTGRAY);
+  GameAppDrawText(d->app, hint,
+                  (screenW - GameAppMeasureText(d->app, hint, 16)) / 2,
+                  screenH - 24, 16, LIGHTGRAY);
 
   for (int i = 0; i < PAUSE_ITEM_COUNT; i++) {
     Rectangle rec = {

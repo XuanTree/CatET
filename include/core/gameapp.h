@@ -16,9 +16,15 @@ typedef struct GameApp {
   int logicHeight;      // 逻辑分辨率高（固定）
   RenderTexture target; // 固定分辨率渲染目标，避免放大后画面模糊
   bool isPaused;
+  // 跨关卡继承的玩家生命值：关卡 onExit 保存当前 HP、下一关 onEnter 恢复；
+  // 0 表示从满血开始（新游戏 / 返回开始菜单时由开始场景重置为 0）。
+  float playerHealth;
   float runTime; // 全局关卡运行计时（秒），暂停时不计，供关卡 HUD / 速通参考
   Image icon;    // 窗口图标（保留以便最后卸载）
-  Sound uiSound; // UI 选中音效（开始/暂停菜单切换选中项时播放）
+  Sound uiSound; // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
+  bool uiSoundValid; // 是否成功加载 UI 音效（无效时静默跳过播放，避免空操作）
+  Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
+  bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）
 } GameApp;
 
 // 初始化窗口、图标、音频设备与固定分辨率渲染目标。
@@ -44,5 +50,12 @@ void GameAppPaused(GameApp *app);
 
 // 全局游戏继续
 void GameAppResume(GameApp *app);
+
+// 使用全局像素字体绘制文本（等价于 DrawText，但应用 uiFont，支持中文释义）。
+void GameAppDrawText(const GameApp *app, const char *text, int posX, int posY,
+                     int fontSize, Color color);
+
+// 使用全局像素字体测量文本宽度（等价于 MeasureText）。
+int GameAppMeasureText(const GameApp *app, const char *text, int fontSize);
 
 #endif // GAMEAPP_H

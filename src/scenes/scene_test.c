@@ -1,14 +1,24 @@
 #include "scenes/scene_test.h"
+#include "entities/flag.h"
 #include "entities/platform.h"
 #include "entities/player.h"
 #include "raylib.h"
 #include "scenes/scene_fail.h"
+#include "scenes/scene_transition.h"
+#include "systems/level_flow.h"
 #include "tools/camera.h"
 #include "tools/raygui.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 平台跳跃关卡（docs/game_instructions.md 关卡设计 3，核心玩法）：
+//   - 玩家在平台与地面之间跳跃前进，无显式倒计时。
+//   - 关卡终点设有小红旗，玩家触碰即通关，进入下一关（关卡类型按权重刷新）。
+//   - HP 归零判定失败。
+// ─────────────────────────────────────────────────────────────────────────────
 
 // 场景私有数据：栈持有并负责释放
 typedef struct TestData {
@@ -17,7 +27,9 @@ typedef struct TestData {
   SceneCamera sceneCamera; // 场景相机：由本场景持有并决定启用/禁用
   Platform platform;
   Platform platform_m;
-  int level;        // 当前关卡编号（测试场景固定为 1）
+  Flag flag;        // 终点小红旗：触碰即通关
+  int level;        // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
+  int difficulty;   // 难度（0/1/2，传递给后续关卡）
   Rectangle source; // 当前动画帧源矩形
 } TestData;
 
@@ -30,6 +42,11 @@ typedef struct LandingSurface {
   float centerX; // 表面水平中心（世界坐标）
   float topY;    // 表面顶面 y（玩家脚可直接站立）
 } LandingSurface;
+
+// 玩家矩形（世界坐标，绘制与碰撞统一）
+static Rectangle PlayerRect(const Player *p) {
+  return (Rectangle){p->position.x, p->position.y, p->size.x, p->size.y};
+}
 
 // 玩家掉出屏幕外一定距离后，传送到水平距离最近的平台（或地面矩形）顶面上，
 // 避免无限下落导致玩家完全脱离关卡。
@@ -84,11 +101,17 @@ static void TestEnter(GameScene *self) {
   // 否则 platformTexture.id 等字段可能残留垃圾值
   d->cat = (Player){0};
   InitPlayer(&d->cat);
-  d->level = 1; // 测试场景为第 1 关
+  // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
+  if (d->app->playerHealth > 0.0f)
+    d->cat.health = d->app->playerHealth;
   d->platform = (Platform){0};
   InitJumpPlatforms(&d->platform, (Vector2){100, 350}, SMALL);
   d->platform_m = (Platform){0};
   InitJumpPlatforms(&d->platform_m, (Vector2){300, 200}, MEDIUM);
+
+  // 终点小红旗：立于地面顶面靠右位置（地面顶面 y = logicHeight - 50）
+  const float groundTop = (float)(d->app->logicHeight - 50);
+  InitFlag(&d->flag, (Vector2){900.0f, groundTop});
 
   // 初始化场景相机
   InitSceneCamera(&d->sceneCamera, d->app->logicWidth, d->app->logicHeight,
@@ -102,6 +125,15 @@ static void TestUpdate(GameScene *self, float dt) {
   // 失败界面只提供「回到菜单」/「退出游戏」两个选择（见 scene_fail.c）。
   if (d->cat.health <= 0.0f) {
     GameStackReplace(self->owner, FailSceneCreate(d->app));
+    return;
+  }
+
+  // 触碰终点小红旗 → 通关：经过渡场景进入下一关（类型按权重刷新）
+  if (FlagCheckCollision(&d->flag, PlayerRect(&d->cat))) {
+    GameStackReplace(
+        self->owner,
+        TransitionSceneCreate(
+            d->app, LevelFlowCreateNextScene(d->app, d->level, d->difficulty)));
     return;
   }
 
@@ -127,18 +159,28 @@ static void TestUpdate(GameScene *self, float dt) {
       AnimationUpdate(&d->cat.animations[d->cat.playerAnimationState], dt);
 }
 
-// 关卡全局 HUD：左上角关卡号、左下角生命值条、右下角游戏时间、右上角 ESC 提示。
-// 在场景相机之外绘制，固定于逻辑屏幕坐标，不随相机 / 玩家移动。
+// 关卡全局 HUD：左上角关卡号、顶部通关提示、左下角生命值条、
+// 右下角游戏时间、右上角 ESC 提示。在场景相机之外绘制，固定于逻辑屏幕坐标。
 static void DrawHud(TestData *d) {
   const float margin = 12.0f;
-  const int fontSize = 12;
+  const int fontSize = 16;
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 
   // 左上角：当前关卡编号
   char levelText[24];
   snprintf(levelText, sizeof(levelText), "Level : %d", d->level);
-  DrawText(levelText, (int)margin, (int)margin, fontSize, DARKGRAY);
+  GameAppDrawText(d->app, levelText, (int)margin, (int)margin, fontSize,
+                  DARKGRAY);
+
+  // 顶部居中：通关提示（触碰红旗）
+  // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍：像素字点采样在整数倍
+  // 缩放下每行像素完整对齐；非整数倍（如 14px）会跳过字形下半部分像素，
+  // 导致提示文字“只能看到上半部分、下半部分丢失”。
+  const char *goalHint = "Reach the red flag to clear this level";
+  GameAppDrawText(d->app, goalHint,
+                  (screenW - GameAppMeasureText(d->app, goalHint, 16)) / 2,
+                  (int)(margin + fontSize + 4), 16, GRAY);
 
   // 左下角：生命值可视化进度条（颜色随剩余血量变化）。
   // bar 起点预留左侧 "HP" 标签空间，避免 raygui 左侧文本绘制到屏幕外。
@@ -176,21 +218,22 @@ static void DrawHud(TestData *d) {
   char timeText[32];
   snprintf(timeText, sizeof(timeText), "Time %02d:%02d", totalSec / 60,
            totalSec % 60);
-  const int timeW = MeasureText(timeText, fontSize);
-  DrawText(timeText, screenW - (int)margin - timeW,
-           screenH - (int)margin - fontSize, fontSize, DARKGRAY);
+  const int timeW = GameAppMeasureText(d->app, timeText, fontSize);
+  GameAppDrawText(d->app, timeText, screenW - (int)margin - timeW,
+                  screenH - (int)margin - fontSize, fontSize, DARKGRAY);
 
   // 右上角：方框内含 ESC 提示（提示玩家按 ESC 暂停）
   const char *escText = "ESC";
-  const int escW = MeasureText(escText, fontSize);
+  const int escW = GameAppMeasureText(d->app, escText, fontSize);
   const float boxW = (float)escW + 20.0f;
   const float boxH = (float)fontSize + 12.0f;
   const float boxX = (float)screenW - margin - boxW;
   const float boxY = margin;
   DrawRectangle((int)boxX, (int)boxY, (int)boxW, (int)boxH, Fade(BLACK, 0.55f));
   DrawRectangleLines((int)boxX, (int)boxY, (int)boxW, (int)boxH, DARKGRAY);
-  DrawText(escText, (int)(boxX + (boxW - (float)escW) * 0.5f),
-           (int)(boxY + (boxH - (float)fontSize) * 0.5f), fontSize, WHITE);
+  GameAppDrawText(d->app, escText, (int)(boxX + (boxW - (float)escW) * 0.5f),
+                  (int)(boxY + (boxH - (float)fontSize) * 0.5f), fontSize,
+                  WHITE);
 }
 
 static void TestDraw(GameScene *self) {
@@ -206,6 +249,9 @@ static void TestDraw(GameScene *self) {
   // 绘制玩家
   DrawPlayer(&d->cat, d->source);
 
+  // 绘制终点小红旗
+  DrawFlag(&d->flag);
+
   // 绘制地面：位于世界坐标 y = logicHeight - 50，
   // 与 GroundCollision 中地面高度（480 - 50）保持一致
   DrawRectangle(0, d->app->logicHeight - 50, 1000.f, 50, LIGHTGRAY);
@@ -218,6 +264,8 @@ static void TestDraw(GameScene *self) {
 
 static void TestExit(GameScene *self) {
   TestData *d = (TestData *)self->data;
+  // 保存当前 HP 供下一关继承（失败/回菜单时由开始场景重置为 0）
+  ((GameApp *)d->app)->playerHealth = d->cat.health;
   // 卸载本场景加载的资源（与场景生命周期绑定）
   UnloadTexture(d->cat.idleTexture);
   UnloadTexture(d->cat.runTexture);
@@ -231,10 +279,18 @@ static void TestExit(GameScene *self) {
   }
 }
 
-GameScene *TestSceneCreate(const GameApp *app) {
+GameScene *TestSceneCreate(const GameApp *app, int level, int difficulty) {
   GameScene *scene = (GameScene *)calloc(1, sizeof(GameScene));
+  if (scene == NULL)
+    return NULL;
   TestData *data = (TestData *)calloc(1, sizeof(TestData));
+  if (data == NULL) {
+    free(scene);
+    return NULL;
+  }
   data->app = app;
+  data->level = level;
+  data->difficulty = difficulty;
 
   scene->name = "TestScene";
   scene->data = data;

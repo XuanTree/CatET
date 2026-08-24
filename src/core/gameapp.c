@@ -23,6 +23,120 @@ void __stdcall keybd_event(BYTE bVk, BYTE bScan, DWORD dwFlags,
                            ULONG_PTR dwExtraInfo);
 #endif
 #include "core/gameapp.h"
+#include "tools/raygui.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// ── 全局 UI 字体码点收集 ─────────────────────────────────────────────
+// LoadFont 只生成 ASCII(32-126) 字形且基高默认 10，既无法渲染词库中文释义，
+// 放大后还会严重糊化。这里从 CET4/CET6 词库收集全部出现过的码点（含中文），
+// 配合 LoadFontEx 生成包含中文字形的像素字图集；同时补全 UI 常用 ASCII。
+#define UI_FONT_BASE_SIZE 48 // 像素字基准字号：标题/提示常用，小字号向下缩放
+#define CODEPOINT_INIT_CAPACITY 512
+
+// 追加一个码点到动态数组（去重 + 自动扩容；内存不足时静默丢弃，降级不崩溃）。
+static void AddCodepoint(int **cps, int *count, int *cap, int cp) {
+  for (int i = 0; i < *count; i++) {
+    if ((*cps)[i] == cp)
+      return;
+  }
+  if (*count >= *cap) {
+    int newCap = (*cap == 0) ? CODEPOINT_INIT_CAPACITY : (*cap) * 2;
+    int *tmp = (int *)realloc(*cps, sizeof(int) * (size_t)newCap);
+    if (!tmp)
+      return;
+    *cps = tmp;
+    *cap = newCap;
+  }
+  (*cps)[(*count)++] = cp;
+}
+
+// 解析 UTF-8 文本并收集全部码点（ASCII + 中文等）。
+static void CollectCodepointsFromText(int **cps, int *count, int *cap,
+                                      const unsigned char *s) {
+  while (*s != '\0') {
+    unsigned char c = *s;
+    int cp = 0, len = 1;
+    if (c < 0x80) {
+      cp = c;
+    } else if ((c & 0xE0) == 0xC0) {
+      cp = c & 0x1F;
+      len = 2;
+    } else if ((c & 0xF0) == 0xE0) {
+      cp = c & 0x0F;
+      len = 3;
+    } else if ((c & 0xF8) == 0xF0) {
+      cp = c & 0x07;
+      len = 4;
+    } else {
+      s++;
+      continue;
+    }
+    bool valid = (len > 1);
+    for (int i = 1; i < len; i++) {
+      if ((s[i] & 0xC0) != 0x80) {
+        valid = false;
+        break;
+      }
+      cp = (cp << 6) | (s[i] & 0x3F);
+    }
+    if (!valid) {
+      s++;
+      continue;
+    }
+    AddCodepoint(cps, count, cap, cp);
+    s += len;
+  }
+}
+
+// 整文件读入（避免跨缓冲区截断 UTF-8 序列）；返回 malloc 缓冲，调用方 free。
+static unsigned char *ReadWholeFile(const char *path, size_t *outSize) {
+  *outSize = 0;
+  FILE *fp = fopen(path, "rb");
+  if (!fp)
+    return NULL;
+  fseek(fp, 0, SEEK_END);
+  long sz = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+  if (sz <= 0) {
+    fclose(fp);
+    return NULL;
+  }
+  unsigned char *buf = (unsigned char *)malloc((size_t)sz + 1);
+  if (!buf) {
+    fclose(fp);
+    return NULL;
+  }
+  size_t rd = fread(buf, 1, (size_t)sz, fp);
+  fclose(fp);
+  buf[rd] = '\0';
+  *outSize = rd;
+  return buf;
+}
+
+// 收集词库全部码点：先补全 UI 必需 ASCII(32-126)，再合并 CET4/CET6 出现字符。
+// 返回 malloc 数组（调用方 free），*outCount 记录数量。
+static int *CollectWordBankCodepoints(const char *appDir, int *outCount) {
+  int cap = 0;
+  int *cps = NULL;
+  *outCount = 0;
+  for (int cp = 32; cp <= 126; cp++)
+    AddCodepoint(&cps, outCount, &cap, cp);
+
+  const char *names[] = {"CET4.txt", "CET6.txt"};
+  for (int f = 0; f < 2; f++) {
+    char path[512];
+    snprintf(path, sizeof(path), "%sassets/words/%s", appDir, names[f]);
+    size_t size = 0;
+    unsigned char *data = ReadWholeFile(path, &size);
+    if (data) {
+      CollectCodepointsFromText(&cps, outCount, &cap, data);
+      free(data);
+    }
+  }
+  return cps;
+}
 
 GameApp GameAppInit(const int logicWidth, const int logicHeight,
                     const char *title) {
@@ -55,9 +169,34 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   SetTargetFPS(60);
   InitAudioDevice();
 
-  // UI 选中音效：开始/暂停菜单切换选中项时播放（由各场景 Update 触发）
+  // UI 音效：加载失败时置 uiSoundValid=false，各场景播放前据此静默跳过。
   app.uiSound = LoadSound(
       TextFormat("%sassets/sounds/ui_sound.ogg", GetApplicationDirectory()));
+  app.uiSoundValid = IsSoundValid(app.uiSound);
+
+  // 全局 UI 字体：用 LoadFontEx 生成包含词库中文码点的像素字图集，
+  // 供界面与中文释义共用；失败降级到默认字体。像素字体用点采样保持锐利。
+  int cpCount = 0;
+  int *codepoints =
+      CollectWordBankCodepoints(GetApplicationDirectory(), &cpCount);
+  Font uiFont = {0};
+  if (codepoints && cpCount > 0) {
+    uiFont = LoadFontEx(
+        TextFormat("%sassets/fonts/pixel_font.ttf", GetApplicationDirectory()),
+        UI_FONT_BASE_SIZE, codepoints, cpCount);
+  }
+  free(codepoints);
+  if (IsFontValid(uiFont) && uiFont.glyphCount > 0) {
+    SetTextureFilter(uiFont.texture, TEXTURE_FILTER_POINT);
+    app.uiFont = uiFont;
+    app.uiFontLoaded = true;
+    // raygui 控件同样使用像素字体，并调大默认字号（原 10 在 640x480 下过小）
+    GuiSetFont(uiFont);
+    GuiSetStyle(DEFAULT, TEXT_SIZE, 20);
+  } else {
+    app.uiFont = GetFontDefault();
+    app.uiFontLoaded = false;
+  }
 
   return app;
 }
@@ -177,6 +316,10 @@ void GameAppClose(GameApp *app) {
   UnloadRenderTexture(app->target);
   UnloadImage(app->icon);
   UnloadSound(app->uiSound);
+  // 仅卸载真正加载的自定义字体（降级用的默认字体归 raylib 内部管理）
+  if (app->uiFontLoaded) {
+    UnloadFont(app->uiFont);
+  }
   CloseAudioDevice();
   CloseWindow();
 }
@@ -191,4 +334,23 @@ void GameAppResume(GameApp *app) {
   if (IsKeyDown(KEY_ESCAPE)) {
     app->isPaused = false;
   }
+}
+
+// 使用全局像素字体绘制文本（等价于 DrawText，但应用 uiFont，支持中文释义）。
+// 字间距取字号 1/10，与 maze 关卡 HUD 的 DrawTextEx 用法保持一致。
+void GameAppDrawText(const GameApp *app, const char *text, int posX, int posY,
+                     int fontSize, Color color) {
+  if (!app || !text)
+    return;
+  DrawTextEx(app->uiFont, text, (Vector2){(float)posX, (float)posY},
+             (float)fontSize, (float)fontSize / 10.0f, color);
+}
+
+// 使用全局像素字体测量文本宽度（等价于 MeasureText）。
+int GameAppMeasureText(const GameApp *app, const char *text, int fontSize) {
+  if (!app || !text)
+    return 0;
+  return (int)MeasureTextEx(app->uiFont, text, (float)fontSize,
+                            (float)fontSize / 10.0f)
+      .x;
 }
