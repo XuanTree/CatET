@@ -3,7 +3,6 @@
 
 #pragma once
 #include "tools/animation.h"
-#include "tools/strings.h"
 #include "tools/timer.h"
 #include <raylib.h>
 
@@ -12,6 +11,7 @@ typedef enum PlayerAnimation {
   WALK,
   RUN,
   JUMP,
+  HIT,
   SLEEP,
   COUNT
 } PlayerAnimation;
@@ -25,6 +25,7 @@ typedef struct Player {
   Texture2D runTexture;
   Texture2D jumpTexture;
   Texture2D sleepTexture;
+  Texture2D hitTexture;
   Vector2 size;
   Animation animations[COUNT];
   PlayerAnimation playerAnimationState;
@@ -32,6 +33,7 @@ typedef struct Player {
   Timer afkTimer;
   bool isOnTheGround;
   bool facingRight; // 面朝方向
+  bool isMovable;   // 规定玩家是否可以移动，在战斗场景中，玩家不允许移动
 } Player;
 
 void InitPlayer(Player *player);

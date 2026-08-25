@@ -8,7 +8,6 @@
 
 // 从释义字符串中提取首个词性缩写（第一个空白字符之前的 token）。
 // 词库格式如 "v. 获取 n. 接近，入口"，首个 token "v." 即词性。
-// 提取结果供英文 UI 显示（中文释义因缺中文字体暂不绘制，数据已保留）。
 static void ExtractPos(const char *meaning, char *out, size_t outSize) {
   out[0] = '\0';
   if (!meaning || outSize == 0)

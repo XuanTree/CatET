@@ -16,6 +16,7 @@ build/
 .clangd
 plans/
 .out-of-code-insights/
+clion-build/
 
 # some assets files
 assets/sounds/

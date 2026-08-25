@@ -24,6 +24,7 @@ void __stdcall keybd_event(BYTE bVk, BYTE bScan, DWORD dwFlags,
 #endif
 #include "core/gameapp.h"
 #include "tools/raygui.h"
+#include "tools/strings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -126,10 +127,13 @@ static int *CollectWordBankCodepoints(const char *appDir, int *outCount) {
 
   const char *names[] = {"CET4.txt", "CET6.txt"};
   for (int f = 0; f < 2; f++) {
-    char path[512];
-    snprintf(path, sizeof(path), "%sassets/words/%s", appDir, names[f]);
+    // 拼接路径：String 自动扩容，规避固定缓冲区对 appDir 长度的假设
+    String path = StringCreate(appDir);
+    StringAppend(&path, "assets/words/");
+    StringAppend(&path, names[f]);
     size_t size = 0;
-    unsigned char *data = ReadWholeFile(path, &size);
+    unsigned char *data = ReadWholeFile(StringData(&path), &size);
+    StringFree(&path);
     if (data) {
       CollectCodepointsFromText(&cps, outCount, &cap, data);
       free(data);

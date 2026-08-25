@@ -141,7 +141,7 @@ include/ 与 src/ 一一对应；CMake 使用 file(GLOB_RECURSE src/*.c)，新�
 - **谁加载谁卸载**：场景资源在 `onEnter` 加载、`onExit` 卸载；栈覆盖/恢复不重复加载。
 - 框架级资源（窗口图标、`RenderTexture`、音频设备）由 [`GameAppClose`](src/core/gameapp.c:110) 统一释放。
 - `data` 由 `GameStack` 释放；场景持有时不要额外 `free(data)`。
-- 禁止使用 [`strings.c`](src/tools/strings.c:1)（已确认死代码、非拥有视图易误用）；字符串格式化用 raylib `TextFormat` 临时缓冲区。
+- 字符串处理优先使用 [`strings.c`](src/tools/strings.c:1) 的 `String`（拥有内存、`'\0'` 结尾、可自动扩容）；`StringCreate*` 创建的实例必须 `StringFree` 释放；临时格式化输出仍用 raylib `TextFormat` 缓冲区。
 - 禁止使用 `strcpy/strcat/sprintf` 等危险函数（审计确认全项目零使用，保持）。
 
 ---

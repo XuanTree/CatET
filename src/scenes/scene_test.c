@@ -1,4 +1,5 @@
 #include "scenes/scene_test.h"
+#include "entities/enemy.h"
 #include "entities/flag.h"
 #include "entities/platform.h"
 #include "entities/player.h"
@@ -27,10 +28,12 @@ typedef struct TestData {
   SceneCamera sceneCamera; // 场景相机：由本场景持有并决定启用/禁用
   Platform platform;
   Platform platform_m;
-  Flag flag;        // 终点小红旗：触碰即通关
-  int level;        // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
-  int difficulty;   // 难度（0/1/2，传递给后续关卡）
-  Rectangle source; // 当前动画帧源矩形
+  Enemy enemy;           // 平台上的敌怪：触碰后 1s 定格进入战斗场景
+  Rectangle enemySource; // 敌怪当前动画帧源矩形
+  Flag flag;             // 终点小红旗：触碰即通关
+  int level;             // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
+  int difficulty;        // 难度（0/1/2，传递给后续关卡）
+  Rectangle source;      // 当前动画帧源矩形
 } TestData;
 
 // 玩家掉出屏幕外此距离后触发传送回最近的着陆表面
@@ -95,6 +98,17 @@ static void RespawnIfFallen(TestData *d, Player *player) {
     player->health = 0.0f;
 }
 
+// 敌怪触碰定格 1s 后触发：进入战斗场景。
+// 占位：战斗场景未实现，此处不做任何事——玩家碰到敌怪不扣血（触碰不产生
+// 伤害），平台场景原有血量机制（掉落扣血等）保持不变。
+// TODO: BattleSceneCreate 实现后替换为：
+//   GameStackPush(self->owner, BattleSceneCreate(d->app, &d->cat, &d->enemy,
+//   self));
+static void TestOnBattle(void *ctx) {
+  GameScene *self = (GameScene *)ctx;
+  (void)self;
+}
+
 static void TestEnter(GameScene *self) {
   TestData *d = (TestData *)self->data;
   // 零初始化：杜绝未初始化内存导致的未定义行为。
@@ -112,6 +126,13 @@ static void TestEnter(GameScene *self) {
   // 终点小红旗：立于地面顶面靠右位置（地面顶面 y = logicHeight - 50）
   const float groundTop = (float)(d->app->logicHeight - 50);
   InitFlag(&d->flag, (Vector2){900.0f, groundTop});
+
+  // 敌怪：出生在玩家与红旗之间的地面，掉落后站在地面巡逻，成为真实障碍；
+  // 触碰后 1s 定格窗口结束触发战斗回调（战斗场景未实现，占位）。
+  d->enemy = (Enemy){0};
+  InitEnemy(&d->enemy, (Vector2){450, 200});
+  d->enemy.onBattle = TestOnBattle;
+  d->enemy.battleCtx = self;
 
   // 初始化场景相机
   InitSceneCamera(&d->sceneCamera, d->app->logicWidth, d->app->logicHeight,
@@ -137,6 +158,13 @@ static void TestUpdate(GameScene *self, float dt) {
     return;
   }
 
+  // 触碰提醒窗口：画面定格（玩家与整个世界不更新，玩家不可移动），
+  // 仅推进敌怪战斗延迟计时；满 1s 后 ePlayerCollision 触发 onBattle。
+  if (d->enemy.isAlive && d->enemy.isCountdown) {
+    ePlayerCollision(&d->enemy, &d->cat);
+    return;
+  }
+
   UpdatePlayer(&d->cat, dt);
 
   // 每帧先重置着地标记，再检测平台/地面碰撞。
@@ -148,6 +176,17 @@ static void TestUpdate(GameScene *self, float dt) {
 
   // 掉出屏幕外一定距离后传送到最近的平台/地面，避免无限下落
   RespawnIfFallen(d, &d->cat);
+
+  // 敌怪更新：巡逻移动 + 重力 + 与地面/平台/玩家的碰撞
+  if (d->enemy.isAlive) {
+    d->enemy.isOnTheGround = false;
+    UpdateEnemy(&d->enemy, dt);
+    eGroundCollision(&d->enemy);
+    ePlatformCollision(&d->enemy, &d->platform);
+    ePlatformCollision(&d->enemy, &d->platform_m);
+    ePlayerCollision(&d->enemy, &d->cat);
+    d->enemySource = AnimationUpdate(&d->enemy.animations[ENEMY_MOVE], dt);
+  }
 
   // 每帧把玩家位置设为相机跟随目标，再按场景配置的模式更新相机。
   // 若场景禁用相机（DisableSceneCamera），此处不会更新，保持固定视野。
@@ -249,6 +288,10 @@ static void TestDraw(GameScene *self) {
   // 绘制玩家
   DrawPlayer(&d->cat, d->source);
 
+  // 绘制敌怪（战斗胜利后 isAlive=false 不再绘制，即“删除该敌怪”）
+  if (d->enemy.isAlive)
+    DrawEnemy(&d->enemy, d->enemySource);
+
   // 绘制终点小红旗
   DrawFlag(&d->flag);
 
@@ -271,6 +314,7 @@ static void TestExit(GameScene *self) {
   UnloadTexture(d->cat.runTexture);
   UnloadTexture(d->cat.jumpTexture);
   UnloadTexture(d->cat.sleepTexture);
+  UnloadTexture(d->enemy.idleTexture);
   if (d->platform.platformTexture.id != 0) {
     UnloadTexture(d->platform.platformTexture);
   }

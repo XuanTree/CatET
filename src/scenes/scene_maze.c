@@ -1,9 +1,9 @@
 #include "scenes/scene_maze.h"
+#include "entities/character.h"
 #include "entities/player.h"
 #include "scenes/scene_fail.h"
 #include "scenes/scene_transition.h"
 #include "systems/level_flow.h"
-#include "systems/words_loader.h"
 #include "tools/camera.h"
 #include "tools/genrandom.h"
 #include <math.h>
@@ -45,14 +45,6 @@
 #define MAZE_MAX_LEVELS 10 // 迷宫画廊层数（房间网格 5 列 × 10 层）
 #define MAZE_MAX_WALLS 768 // 墙体矩形数组上限
 
-// 迷宫中的字母实体：正确字母或被挖掉字母的干扰项。
-typedef struct MazeLetter {
-  char ch;          // 字母字符
-  bool isCorrect;   // 是否为需要的正确字母
-  bool isPickedUp;  // 是否被玩家顶在头上
-  Vector2 position; // 字母位置（世界坐标，落在某平台上方）
-} MazeLetter;
-
 // 场景私有数据：栈持有并负责释放
 typedef struct MazeData {
   const GameApp *app; // 只读引用，不拥有
@@ -63,23 +55,16 @@ typedef struct MazeData {
   bool solid[MAZE_COLS][MAZE_ROWS]; // true=实心泥土
   Rectangle walls[MAZE_MAX_WALLS];  // 由实心网格合并的墙体矩形（碰撞/绘制）
   int wallCount;
-  int spawnRc;            // 出生房间列（底部一层 rl=0）
-  Rectangle wordPlatform; // 中央拼写平台（绿色高亮，顶面供玩家站立）
+  int spawnRc;                                // 出生房间列（底部一层 rl=0）
   Vector2 letterSpots[MAZE_MAX_LETTERS];      // 字母候选落点（迷宫各房间）
   bool letterSpotIsDeadEnd[MAZE_MAX_LETTERS]; // 对应落点所在房间是否为死胡同
   int letterSpotCount;
-  WordsBank bank;    // 词库
-  WordEntry entry;   // 当前单词
-  char revealed[64]; // 挖空后的单词显示（'_' 表示空位）
-  int blankIndex;    // 被挖空的字母在单词中的下标
-  char answerChar;   // 正确字母
-  MazeLetter letters[MAZE_MAX_LETTERS];
-  int letterCount;
-  float timeLeft;      // 关卡倒计时（秒）
-  bool holdingLetter;  // 玩家是否顶着一个字母
-  int heldLetterIndex; // 当前顶着的字母下标（-1 表示无）
-  int difficulty;      // 难度（传给下一关）
-  int level;           // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
+  float timeLeft;   // 关卡倒计时（秒）
+  int difficulty;   // 难度（传给下一关）
+  int level;        // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
+  GameStack *owner; // 所属栈（MazeEnter 捕获 self->owner，供拼写事件切换场景）
+  // 可复用的字母拾取 + 拼写检查组件（词库、谜题、字母实体、交互状态均在其中）
+  Character character;
 } MazeData;
 
 // ── 迷宫布局（随机化 Prim 生成大型封闭式蚂蚁地穴迷宫）──────────────────────
@@ -279,9 +264,10 @@ static void BuildMazeLayout(MazeData *d) {
   carved[2][hubLevel] = true;
   carved[3][hubLevel] = true;
   int hubFloorRow = 35 - 3 * hubLevel; // 拼写大厅下方楼板行
-  d->wordPlatform = (Rectangle){((float)(1 + 2 * MAZE_ROOM_W)) * MAZE_TILE,
-                                (float)hubFloorRow * MAZE_TILE,
-                                2.0f * MAZE_ROOM_W * MAZE_TILE, MAZE_TILE};
+  d->character.wordPlatform =
+      (Rectangle){((float)(1 + 2 * MAZE_ROOM_W)) * MAZE_TILE,
+                  (float)hubFloorRow * MAZE_TILE,
+                  2.0f * MAZE_ROOM_W * MAZE_TILE, MAZE_TILE};
   PushFrontier(frontier, &frontierCount, 2, hubLevel, false);
   PushFrontier(frontier, &frontierCount, 3, hubLevel, false);
 
@@ -385,86 +371,11 @@ static Rectangle PlayerRect(const Player *p) {
   return (Rectangle){p->position.x, p->position.y, p->size.x, p->size.y};
 }
 
-// 抽取长度合适的单词并挖掉 1 个字母，再生成正确字母 + 干扰字母散落迷宫。
-static void SetupWord(MazeData *d) {
-  const WordEntry *entry = NULL;
-  for (int i = 0; i < 200; i++) {
-    const WordEntry *cand = WordsBankPickRandom(&d->bank);
-    if (!cand)
-      break;
-    size_t len = strlen(cand->word);
-    if (len >= 3 && len <= 12) {
-      entry = cand;
-      break;
-    }
-  }
-  if (entry) {
-    d->entry = *entry;
-  } else {
-    // 词库为空或没有合适长度：使用兜底单词，保证场景仍可运行
-    snprintf(d->entry.word, sizeof(d->entry.word), "cat");
-    snprintf(d->entry.meaning, sizeof(d->entry.meaning), "n. (fallback)");
-    snprintf(d->entry.pos, sizeof(d->entry.pos), "n.");
-  }
-
-  size_t len = strlen(d->entry.word);
-  d->blankIndex = genRandomNum((int)len);
-  d->answerChar = d->entry.word[d->blankIndex];
-  snprintf(d->revealed, sizeof(d->revealed), "%s", d->entry.word);
-  d->revealed[d->blankIndex] = '_';
-
-  // 干扰字母（不同于正确字母的小写字母）
-  char distractors[DISTRACTOR_COUNT];
-  for (int i = 0; i < DISTRACTOR_COUNT; i++) {
-    char ch;
-    do {
-      ch = (char)('a' + genRandomNum(26));
-    } while (ch == d->answerChar);
-    distractors[i] = ch;
-  }
-
-  // 从程序化生成的迷宫平台动态收集候选落点（按层撒布），洗牌后随机分配，
-  // 保证每局字母位置随布局变化，不再固定。洗牌时同步打乱死胡同标记，
-  // 供下面把正确字母优先放进“非死胡同”房间。
-  Vector2 spots[MAZE_MAX_LETTERS];
-  bool spotIsDeadEnd[MAZE_MAX_LETTERS];
-  int spotCount = CollectLetterSpots(d, spots, MAZE_MAX_LETTERS);
-  for (int i = 0; i < spotCount; i++)
-    spotIsDeadEnd[i] = d->letterSpotIsDeadEnd[i];
-  for (int i = spotCount - 1; i > 0; i--) {
-    int j = genRandomNum(i + 1);
-    Vector2 t = spots[i];
-    spots[i] = spots[j];
-    spots[j] = t;
-    bool tb = spotIsDeadEnd[i];
-    spotIsDeadEnd[i] = spotIsDeadEnd[j];
-    spotIsDeadEnd[j] = tb;
-  }
-  d->letterCount = 1 + DISTRACTOR_COUNT;
-  if (d->letterCount > spotCount)
-    d->letterCount = spotCount; // 落点不足时减少字母数（防御）
-  // 正确字母优先放在“非死胡同”房间（deg>=2，可通过房间），保证
-  // 出生点→正确字母→拼写平台之间无死路；全部为死胡同时退回随机（防御）。
-  int correctIdx = -1;
-  for (int i = 0; i < d->letterCount; i++) {
-    if (!spotIsDeadEnd[i]) {
-      correctIdx = i;
-      break;
-    }
-  }
-  if (correctIdx < 0)
-    correctIdx = genRandomNum(d->letterCount);
-  int distIdx = 0;
-  for (int i = 0; i < d->letterCount; i++) {
-    d->letters[i].isCorrect = (i == correctIdx);
-    d->letters[i].ch =
-        d->letters[i].isCorrect ? d->answerChar : distractors[distIdx++];
-    d->letters[i].isPickedUp = false;
-    d->letters[i].position = spots[i];
-  }
-  d->holdingLetter = false;
-  d->heldLetterIndex = -1;
-}
+// 字母放下落点解析与拼写事件的实现位于本文件下方（墙体定义之后），
+// 此处先声明，供 MazeEnter 注入 Character 组件回调。
+static Vector2 MazeDropResolver(void *ctx, const Player *p);
+static void MazeOnSpellCorrect(void *ctx);
+static void MazeOnSpellWrong(void *ctx);
 
 // ── 生命周期回调 ────────────────────────────────────────────────────────────
 
@@ -477,7 +388,16 @@ static void MazeEnter(GameScene *self) {
   if (d->app->playerHealth > 0.0f)
     d->cat.health = d->app->playerHealth;
 
-  // 按难度加载词库
+  // 初始化字母拼写组件并注入场景回调（落点解析 + 拼写事件）
+  d->owner = self->owner;
+  CharacterInit(&d->character);
+  d->character.dropResolver = MazeDropResolver;
+  d->character.dropCtx = d;
+  d->character.onSpellCorrect = MazeOnSpellCorrect;
+  d->character.onSpellWrong = MazeOnSpellWrong;
+  d->character.eventCtx = d;
+
+  // 按难度加载词库（词库加载/谜题生成/字母交互均在 Character 组件内）
   const char *path;
   switch (d->difficulty) {
   case 2:
@@ -491,9 +411,9 @@ static void MazeEnter(GameScene *self) {
     path = "%sassets/words/CET4.txt";
     break;
   }
-  WordsBankLoad(&d->bank, TextFormat(path, GetApplicationDirectory()));
+  CharacterLoadBank(&d->character, TextFormat(path, GetApplicationDirectory()));
 
-  // 构建封闭式蚂蚁地穴迷宫
+  // 构建封闭式蚂蚁地穴迷宫（同时确定拼写平台与字母候选落点）
   BuildMazeLayout(d);
 
   // 玩家出生在底部出生房间（地面之上）
@@ -506,8 +426,15 @@ static void MazeEnter(GameScene *self) {
   InitSceneCamera(&d->camera, d->app->logicWidth, d->app->logicHeight, true,
                   CAMERA_FOLLOW_CENTER);
 
-  // 抽词 + 挖空 + 放字母
-  SetupWord(d);
+  // 抽词 + 挖空 + 放字母（正确字母 + 干扰字母散落迷宫房间）
+  CharacterSetupPuzzle(&d->character);
+  Vector2 spots[MAZE_MAX_LETTERS];
+  bool spotIsDeadEnd[MAZE_MAX_LETTERS];
+  int spotCount = CollectLetterSpots(d, spots, MAZE_MAX_LETTERS);
+  for (int i = 0; i < spotCount; i++)
+    spotIsDeadEnd[i] = d->letterSpotIsDeadEnd[i];
+  CharacterPlaceLetters(&d->character, spots, spotIsDeadEnd, spotCount,
+                        DISTRACTOR_COUNT);
   d->timeLeft = MAZE_TIME_LIMIT;
 }
 
@@ -615,59 +542,27 @@ static Vector2 DropLetterPosition(const MazeData *d, const Player *p) {
   return pos;
 }
 
-// 处理 Z 键：未持有字母时靠近字母则捡起；持有字母时在拼写平台上放下并判定，
-// 在拼写平台以外任意位置放下仅归还字母（不判定、不扣血）。
-static void HandleLetterInteraction(GameScene *self) {
-  MazeData *d = (MazeData *)self->data;
-  if (!IsKeyPressed(KEY_Z))
-    return;
+// 字母放下落点解析（Character 组件回调）：复用 DropLetterPosition，
+// 从玩家脚底向下找最近的可站立墙体顶面（兜底为地面），保证放下后可拾取。
+static Vector2 MazeDropResolver(void *ctx, const Player *p) {
+  MazeData *d = (MazeData *)ctx;
+  return DropLetterPosition(d, p);
+}
 
-  Player *p = &d->cat;
-  if (!d->holdingLetter) {
-    for (int i = 0; i < d->letterCount; i++) {
-      if (d->letters[i].isPickedUp)
-        continue;
-      if (CheckCollisionCircleRec(d->letters[i].position, LETTER_RADIUS,
-                                  PlayerRect(p))) {
-        d->letters[i].isPickedUp = true;
-        d->holdingLetter = true;
-        d->heldLetterIndex = i;
-        break;
-      }
-    }
-  } else {
-    // 放下：玩家中心落在拼写平台及其上方空间内 → 拼写判定；
-    // 否则可在任意位置放下字母，给玩家重新选择/放弃的余地，避免误扣血。
-    Rectangle dropArea = {d->wordPlatform.x, d->wordPlatform.y - 48,
-                          d->wordPlatform.width, d->wordPlatform.height + 48};
-    Vector2 center = {p->position.x + p->size.x * 0.5f,
-                      p->position.y + p->size.y * 0.5f};
-    MazeLetter *held = &d->letters[d->heldLetterIndex];
-    if (!CheckCollisionPointRec(center, dropArea)) {
-      // 任意位置放下：字母落到玩家脚下的平台顶面（空中按 Z 也不会悬空）
-      held->position = DropLetterPosition(d, p);
-      held->isPickedUp = false;
-      d->holdingLetter = false;
-      d->heldLetterIndex = -1;
-      return;
-    }
+// 拼写正确：经过渡场景进入下一关（类型按 level_flow 权重刷新）
+static void MazeOnSpellCorrect(void *ctx) {
+  MazeData *d = (MazeData *)ctx;
+  GameStackReplace(d->owner, TransitionSceneCreate(
+                                 d->app, LevelFlowCreateNextScene(
+                                             d->app, d->level, d->difficulty)));
+}
 
-    if (held->ch == d->answerChar) {
-      // 拼写正确 → 经过渡场景进入下一关（类型按 level_flow 权重刷新）
-      GameStackReplace(
-          self->owner,
-          TransitionSceneCreate(d->app, LevelFlowCreateNextScene(
-                                            d->app, d->level, d->difficulty)));
-    } else {
-      // 拼写错误：扣血并重置（字母放回原位，需重新寻找）
-      d->cat.health -= WRONG_PENALTY;
-      if (d->cat.health < 0.0f)
-        d->cat.health = 0.0f;
-      held->isPickedUp = false;
-      d->holdingLetter = false;
-      d->heldLetterIndex = -1;
-    }
-  }
+// 拼写错误：扣血并重置（字母放回原位由 Character 组件处理，需重新寻找）
+static void MazeOnSpellWrong(void *ctx) {
+  MazeData *d = (MazeData *)ctx;
+  d->cat.health -= WRONG_PENALTY;
+  if (d->cat.health < 0.0f)
+    d->cat.health = 0.0f;
 }
 
 static void MazeUpdate(GameScene *self, float dt) {
@@ -698,23 +593,13 @@ static void MazeUpdate(GameScene *self, float dt) {
     d->cat.isOnTheGround = true;
   }
 
-  HandleLetterInteraction(self);
+  CharacterUpdate(&d->character, &d->cat);
 
   // 相机跟随 + 动画帧
   SetCameraTarget(&d->camera, d->cat.position);
   UpdateSceneCamera(&d->camera, dt);
   d->source =
       AnimationUpdate(&d->cat.animations[d->cat.playerAnimationState], dt);
-}
-
-// 绘制单个字母（统一颜色，不区分正确/错误，让玩家凭单词提示自行判断）。
-static void DrawLetter(const GameApp *app, const MazeLetter *l) {
-  DrawCircleV(l->position, LETTER_RADIUS, Fade(SKYBLUE, 0.85f));
-  char txt[2] = {l->ch, '\0'};
-  const int fs = 24;
-  int w = GameAppMeasureText(app, txt, fs);
-  GameAppDrawText(app, txt, (int)(l->position.x - w * 0.5f),
-                  (int)(l->position.y - fs * 0.5f), fs, DARKBLUE);
 }
 
 // HUD：顶部单词提示、左下角 HP 条、右下角倒计时、右上角 ESC 提示、
@@ -728,7 +613,8 @@ static void DrawHud(MazeData *d) {
   float topY = margin;
   const int hintSize = 28;
   char hint[128];
-  snprintf(hint, sizeof(hint), "%s   (%s)", d->revealed, d->entry.pos);
+  snprintf(hint, sizeof(hint), "%s   (%s)", d->character.revealed,
+           d->character.entry.pos);
   GameAppDrawText(d->app, hint,
                   (screenW - GameAppMeasureText(d->app, hint, hintSize)) / 2,
                   (int)topY, hintSize, BLACK);
@@ -737,8 +623,10 @@ static void DrawHud(MazeData *d) {
   // 中文释义（像素字体含中文字形，改为黑色便于阅读）
   const int meaningSize = 18;
   GameAppDrawText(
-      d->app, d->entry.meaning,
-      (screenW - GameAppMeasureText(d->app, d->entry.meaning, meaningSize)) / 2,
+      d->app, d->character.entry.meaning,
+      (screenW -
+       GameAppMeasureText(d->app, d->character.entry.meaning, meaningSize)) /
+          2,
       (int)topY, meaningSize, BLACK);
 
   // 左下角：HP 条（颜色随剩余血量变化）
@@ -803,37 +691,20 @@ static void MazeDraw(GameScene *self) {
   }
 
   // 拼写平台：中央绿色高亮
-  DrawRectangleRec(d->wordPlatform, Fade(GREEN, 0.75f));
-  DrawRectangleLinesEx(d->wordPlatform, 1.0f, GREEN);
+  DrawRectangleRec(d->character.wordPlatform, Fade(GREEN, 0.75f));
+  DrawRectangleLinesEx(d->character.wordPlatform, 1.0f, GREEN);
 
-  // 拼写平台上方提示（置于平台之上、上层楼板之下的走廊空腔中）
-  const char *dropHint = "SPELL HERE";
-  int dhSize = 16;
-  int dhW = GameAppMeasureText(d->app, dropHint, dhSize);
-  GameAppDrawText(
-      d->app, dropHint,
-      (int)(d->wordPlatform.x + d->wordPlatform.width * 0.5f - dhW * 0.5f),
-      (int)(d->wordPlatform.y - dhSize - 8), dhSize, GREEN);
+  // 拼写平台上方提示
+  CharacterDrawSpellHint(&d->character, d->app);
 
   // 地上的字母（未被捡起的）
-  for (int i = 0; i < d->letterCount; i++) {
-    if (!d->letters[i].isPickedUp)
-      DrawLetter(d->app, &d->letters[i]);
-  }
+  CharacterDrawLetters(&d->character, d->app);
 
   // 玩家
   DrawPlayer(&d->cat, d->source);
 
   // 头顶字母 + 虚线引导回拼写平台
-  if (d->holdingLetter && d->heldLetterIndex >= 0) {
-    MazeLetter top = d->letters[d->heldLetterIndex];
-    top.position = (Vector2){d->cat.position.x + d->cat.size.x * 0.5f,
-                             d->cat.position.y - 12.0f};
-    DrawLetter(d->app, &top);
-    Vector2 to = {d->wordPlatform.x + d->wordPlatform.width * 0.5f,
-                  d->wordPlatform.y};
-    DrawLineEx(top.position, to, 2.0f, Fade(BLUE, 0.7f));
-  }
+  CharacterDrawHeld(&d->character, d->app, &d->cat);
 
   EndSceneCamera(&d->camera);
 
@@ -848,7 +719,7 @@ static void MazeExit(GameScene *self) {
   UnloadTexture(d->cat.runTexture);
   UnloadTexture(d->cat.jumpTexture);
   UnloadTexture(d->cat.sleepTexture);
-  WordsBankFree(&d->bank);
+  CharacterFreeBank(&d->character);
 }
 
 GameScene *MazeSceneCreate(const GameApp *app, int difficulty, int level) {
@@ -863,7 +734,6 @@ GameScene *MazeSceneCreate(const GameApp *app, int difficulty, int level) {
   data->app = app;
   data->difficulty = difficulty;
   data->level = level;
-  data->heldLetterIndex = -1;
 
   scene->name = "MazeScene";
   scene->data = data;

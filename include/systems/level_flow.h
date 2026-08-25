@@ -20,7 +20,7 @@ typedef enum LevelType {
 } LevelType;
 
 // 依据权重随机返回下一关类型（平台跳跃为主）。
-LevelType LevelFlowRollType(void);
+LevelType LevelFlowRollType();
 
 // 生成指定关卡（level/difficulty）与类型的场景；type 非法时回退平台跳跃。
 GameScene *LevelFlowCreateScene(const GameApp *app, LevelType type, int level,

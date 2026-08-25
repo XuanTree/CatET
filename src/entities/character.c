@@ -1,0 +1,256 @@
+#include "entities/character.h"
+#include "tools/genrandom.h"
+#include "tools/strings.h"
+#include <stdio.h>
+#include <string.h>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 可复用的「字母拾取 + 拼写检查」组件实现：
+//   从原迷宫场景（scene_maze.c）抽取的字母交互逻辑，包含词库谜题生成、
+//   Z 键拾取/放下、拼写平台判定与拼写事件。场景相关的行为（落点解析、
+//   拼写正确/错误处理）通过回调注入，本组件不依赖任何具体场景。
+// ─────────────────────────────────────────────────────────────────────────────
+
+#define CHARACTER_DEFAULT_PICKUP_RADIUS 22.0f
+
+// 玩家矩形（世界坐标，绘制与碰撞统一）
+static Rectangle CharacterPlayerRect(const Player *p) {
+  return (Rectangle){p->position.x, p->position.y, p->size.x, p->size.y};
+}
+
+void CharacterInit(Character *c) {
+  if (!c)
+    return;
+  memset(c, 0, sizeof(*c));
+  c->heldLetterIndex = -1;
+  c->pickupKey = KEY_Z;
+  c->pickupRadius = CHARACTER_DEFAULT_PICKUP_RADIUS;
+}
+
+int CharacterLoadBank(Character *c, const char *path) {
+  if (!c || !path)
+    return -1;
+  return WordsBankLoad(&c->bank, path);
+}
+
+void CharacterFreeBank(Character *c) {
+  if (!c)
+    return;
+  WordsBankFree(&c->bank);
+}
+
+const char *CharacterSetupPuzzle(Character *c) {
+  if (!c)
+    return NULL;
+
+  // 抽取长度合适的单词（3~12），最多尝试 200 次
+  const WordEntry *entry = NULL;
+  for (int i = 0; i < 200; i++) {
+    const WordEntry *cand = WordsBankPickRandom(&c->bank);
+    if (!cand)
+      break;
+    size_t len = strlen(cand->word);
+    if (len >= 3 && len <= 12) {
+      entry = cand;
+      break;
+    }
+  }
+  if (entry) {
+    c->entry = *entry;
+  } else {
+    // 词库为空或没有合适长度：使用兜底单词，保证场景仍可运行
+    snprintf(c->entry.word, sizeof(c->entry.word), "cat");
+    snprintf(c->entry.meaning, sizeof(c->entry.meaning), "n. (fallback)");
+    snprintf(c->entry.pos, sizeof(c->entry.pos), "n.");
+  }
+
+  // 挖空 1 个字母，生成 revealed（'_' 表示空位）与 answerChar
+  size_t len = strlen(c->entry.word);
+  c->blankIndex = genRandomNum((int)len);
+  c->answerChar = c->entry.word[c->blankIndex];
+
+  // 用 String 逐字符构建挖空显示（每关开始调用一次，非热路径）
+  String revealed = StringCreateEmpty();
+  for (size_t i = 0; i < len; i++) {
+    const char ch = (i == (size_t)c->blankIndex) ? '_' : c->entry.word[i];
+    StringAppendChar(&revealed, ch);
+  }
+  snprintf(c->revealed, sizeof(c->revealed), "%s", StringData(&revealed));
+  StringFree(&revealed);
+  return c->entry.word;
+}
+
+void CharacterPlaceLetters(Character *c, const Vector2 *spots,
+                           const bool *spotIsDeadEnd, int spotCount,
+                           int distractorCount) {
+  if (!c || !spots || spotCount <= 0)
+    return;
+  if (distractorCount < 0)
+    distractorCount = 0;
+  if (distractorCount > CHARACTER_MAX_LETTERS - 1)
+    distractorCount = CHARACTER_MAX_LETTERS - 1;
+
+  // 干扰字母（不同于正确字母的小写字母）
+  char distractors[CHARACTER_MAX_LETTERS - 1];
+  for (int i = 0; i < distractorCount; i++) {
+    char ch;
+    do {
+      ch = (char)('a' + genRandomNum(26));
+    } while (ch == c->answerChar);
+    distractors[i] = ch;
+  }
+
+  // 洗牌候选落点（同步打乱死胡同标记），保证每局字母位置随机
+  Vector2 shuffled[CHARACTER_MAX_LETTERS];
+  bool shuffledDeadEnd[CHARACTER_MAX_LETTERS] = {false};
+  int n =
+      (spotCount < CHARACTER_MAX_LETTERS) ? spotCount : CHARACTER_MAX_LETTERS;
+  for (int i = 0; i < n; i++) {
+    shuffled[i] = spots[i];
+    if (spotIsDeadEnd)
+      shuffledDeadEnd[i] = spotIsDeadEnd[i];
+  }
+  for (int i = n - 1; i > 0; i--) {
+    int j = genRandomNum(i + 1);
+    Vector2 t = shuffled[i];
+    shuffled[i] = shuffled[j];
+    shuffled[j] = t;
+    bool tb = shuffledDeadEnd[i];
+    shuffledDeadEnd[i] = shuffledDeadEnd[j];
+    shuffledDeadEnd[j] = tb;
+  }
+
+  c->letterCount = 1 + distractorCount;
+  if (c->letterCount > n)
+    c->letterCount = n; // 落点不足时减少字母数（防御）
+
+  // 正确字母优先放在“非死胡同”落点（可通过房间），保证
+  // 出生点→正确字母→拼写平台之间无死路；全部为死胡同时退回随机（防御）。
+  int correctIdx = -1;
+  for (int i = 0; i < c->letterCount; i++) {
+    if (!shuffledDeadEnd[i]) {
+      correctIdx = i;
+      break;
+    }
+  }
+  if (correctIdx < 0)
+    correctIdx = genRandomNum(c->letterCount);
+
+  int distIdx = 0;
+  for (int i = 0; i < c->letterCount; i++) {
+    c->letters[i].isCorrect = (i == correctIdx);
+    c->letters[i].ch =
+        c->letters[i].isCorrect ? c->answerChar : distractors[distIdx++];
+    c->letters[i].isPickedUp = false;
+    c->letters[i].position = shuffled[i];
+  }
+  c->holdingLetter = false;
+  c->heldLetterIndex = -1;
+}
+
+void CharacterUpdate(Character *c, Player *p) {
+  if (!c || !p)
+    return;
+  if (!IsKeyPressed(c->pickupKey))
+    return;
+
+  if (!c->holdingLetter) {
+    // 未持有：靠近字母则拾取（顶在头上）
+    for (int i = 0; i < c->letterCount; i++) {
+      if (c->letters[i].isPickedUp)
+        continue;
+      if (CheckCollisionCircleRec(c->letters[i].position, c->pickupRadius,
+                                  CharacterPlayerRect(p))) {
+        c->letters[i].isPickedUp = true;
+        c->holdingLetter = true;
+        c->heldLetterIndex = i;
+        break;
+      }
+    }
+    return;
+  }
+
+  if (c->heldLetterIndex < 0 || c->heldLetterIndex >= c->letterCount)
+    return;
+  CharLetter *held = &c->letters[c->heldLetterIndex];
+
+  // 放下：玩家中心落在拼写平台及其上方空间内 → 拼写判定；
+  // 否则可在任意位置放下字母（可随时放弃/更换，避免误扣血）。
+  Rectangle dropArea = {c->wordPlatform.x, c->wordPlatform.y - 48,
+                        c->wordPlatform.width, c->wordPlatform.height + 48};
+  Vector2 center = {p->position.x + p->size.x * 0.5f,
+                    p->position.y + p->size.y * 0.5f};
+  if (!CheckCollisionPointRec(center, dropArea)) {
+    // 任意位置放下：字母落到解析器给出的平台顶面（空中按 Z 也不会悬空）
+    if (c->dropResolver)
+      held->position = c->dropResolver(c->dropCtx, p);
+    held->isPickedUp = false;
+    c->holdingLetter = false;
+    c->heldLetterIndex = -1;
+    return;
+  }
+
+  if (held->ch == c->answerChar) {
+    // 拼写正确：复位持有状态，交由场景事件切换下一关
+    c->holdingLetter = false;
+    c->heldLetterIndex = -1;
+    if (c->onSpellCorrect)
+      c->onSpellCorrect(c->eventCtx);
+  } else {
+    // 拼写错误：字母放回原位（重新寻找），触发场景事件（如扣血）
+    held->isPickedUp = false;
+    c->holdingLetter = false;
+    c->heldLetterIndex = -1;
+    if (c->onSpellWrong)
+      c->onSpellWrong(c->eventCtx);
+  }
+}
+
+// 绘制单个字母（统一颜色，不区分正确/错误，让玩家凭单词提示自行判断）。
+static void CharacterDrawOne(const GameApp *app, const CharLetter *l,
+                             float radius) {
+  DrawCircleV(l->position, radius, Fade(SKYBLUE, 0.85f));
+  char txt[2] = {l->ch, '\0'};
+  const int fs = 24;
+  int w = GameAppMeasureText(app, txt, fs);
+  GameAppDrawText(app, txt, (int)(l->position.x - w * 0.5f),
+                  (int)(l->position.y - fs * 0.5f), fs, DARKBLUE);
+}
+
+void CharacterDrawLetters(const Character *c, const GameApp *app) {
+  if (!c || !app)
+    return;
+  for (int i = 0; i < c->letterCount; i++) {
+    if (!c->letters[i].isPickedUp)
+      CharacterDrawOne(app, &c->letters[i], c->pickupRadius);
+  }
+}
+
+void CharacterDrawHeld(const Character *c, const GameApp *app,
+                       const Player *p) {
+  if (!c || !app || !p || !c->holdingLetter)
+    return;
+  if (c->heldLetterIndex < 0 || c->heldLetterIndex >= c->letterCount)
+    return;
+  // 头顶字母 + 虚线引导回拼写平台
+  CharLetter top = c->letters[c->heldLetterIndex];
+  top.position =
+      (Vector2){p->position.x + p->size.x * 0.5f, p->position.y - 12.0f};
+  CharacterDrawOne(app, &top, c->pickupRadius);
+  Vector2 to = {c->wordPlatform.x + c->wordPlatform.width * 0.5f,
+                c->wordPlatform.y};
+  DrawLineEx(top.position, to, 2.0f, Fade(BLUE, 0.7f));
+}
+
+void CharacterDrawSpellHint(const Character *c, const GameApp *app) {
+  if (!c || !app)
+    return;
+  // 拼写平台上方提示（置于平台之上、上层楼板之下的走廊空腔中）
+  const char *dropHint = "SPELL HERE";
+  int dhSize = 16;
+  int dhW = GameAppMeasureText(app, dropHint, dhSize);
+  GameAppDrawText(
+      app, dropHint,
+      (int)(c->wordPlatform.x + c->wordPlatform.width * 0.5f - dhW * 0.5f),
+      (int)(c->wordPlatform.y - dhSize - 8), dhSize, GREEN);
+}
