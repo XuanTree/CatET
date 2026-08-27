@@ -38,6 +38,12 @@ endif()
 target_include_directories(CET PRIVATE include)
 target_link_libraries(CET PRIVATE raylib::raylib)
 
+# Windows 专用链接：dwmapi（DwmSetWindowAttribute，用于禁用 DWM 窗口过渡
+# 动画，消除全屏/小窗切换时的合成卡顿）
+if(WIN32)
+    target_link_libraries(CET PRIVATE dwmapi)
+endif()
+
 # Copy assets directory to the executable output directory after each build.
 # This ensures assets are always found next to the binary regardless of IDE,
 # build preset, or deployment scenario.

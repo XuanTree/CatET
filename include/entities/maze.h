@@ -11,16 +11,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef struct Maze {
-  int cols;             // 单元格列数
-  int rows;             // 单元格行数
-  float cellSize;       // 单元格像素尺寸（玩家一格宽）
-  float wallThickness;  // 墙壁厚度（像素）
-  Rectangle *walls;     // 墙壁矩形数组（含边界墙）
+  int cols;            // 单元格列数
+  int rows;            // 单元格行数
+  float cellSize;      // 单元格像素尺寸（玩家一格宽）
+  float wallThickness; // 墙壁厚度（像素）
+  Rectangle *walls;    // 墙壁矩形数组（含边界墙）
   int wallCount;
   int wallCapacity;
-  Rectangle wordArea;   // 单词拼写空地（世界坐标矩形，中心 3x3 区域）
-  Vector2 startPos;     // 玩家出生点（左上角格子中心，世界坐标）
-  Vector2 *deadEnds;    // 死胡同格子中心坐标（供放置字母）
+  Rectangle wordArea; // 单词拼写空地（世界坐标矩形，中心 3x3 区域）
+  Vector2 startPos;   // 玩家出生点（左上角格子中心，世界坐标）
+  Vector2 *deadEnds;  // 死胡同格子中心坐标（供放置字母）
   int deadEndCount;
   int deadEndCapacity;
 } Maze;

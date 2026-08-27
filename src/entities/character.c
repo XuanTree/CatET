@@ -1,8 +1,4 @@
-#include "entities/character.h"
-#include "tools/genrandom.h"
-#include "tools/strings.h"
-#include <stdio.h>
-#include <string.h>
+#include "game.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 可复用的「字母拾取 + 拼写检查」组件实现：

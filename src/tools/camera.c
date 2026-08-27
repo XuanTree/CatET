@@ -1,6 +1,4 @@
-#include "tools/camera.h"
-#include "raylib.h"
-#include <math.h>
+#include "game.h"
 
 void InitCamera2D(Camera2D *camera, Vector2 target, int logicWidth,
                   int logicHeight) {

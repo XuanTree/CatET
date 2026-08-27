@@ -1,7 +1,4 @@
-#include "entities/enemy.h"
-#include "core/game_config.h"
-#include <raylib.h>
-#include <stdbool.h>
+#include "game.h"
 
 // 敌怪移动速度（世界坐标/秒）
 #define ENEMY_MOVE_SPEED 260.f

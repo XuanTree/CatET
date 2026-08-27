@@ -1,11 +1,4 @@
-#include "scenes/scene_maze.h"
-#include "entities/character.h"
-#include "entities/player.h"
-#include "scenes/scene_fail.h"
-#include "scenes/scene_transition.h"
-#include "systems/level_flow.h"
-#include "tools/camera.h"
-#include "tools/genrandom.h"
+#include "game.h"
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
@@ -23,22 +16,23 @@
 //   - 拼写平台以外任意位置均可放下字母（可随时放弃/更换，避免误扣血）。
 //   - 拼写正确进入下一关；拼写错误扣血并重置；HP 归零失败。
 //   - 跟随镜头（纵向为主）。
+// 感谢Deepseek对于迷宫生成算法的贡献
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define MAZE_TIME_LIMIT 180.0f // 迷宫关卡给更多时间（约 3 分钟，见游戏设计）
-#define WRONG_PENALTY 20.0f    // 拼写错误扣血
-#define TIME_PENALTY 20.0f     // 倒计时归零扣血（并重置倒计时）
-#define LETTER_RADIUS 22.0f    // 字母拾取半径
+#define MAZE_TIME_LIMIT 90.0f // 迷宫关卡限时 1 分 30 秒（右下角 HUD 倒计时）
+#define WRONG_PENALTY 20.0f   // 拼写错误扣血
+#define TIME_PENALTY 20.0f    // 倒计时归零扣血（并重置倒计时）
+#define LETTER_RADIUS 22.0f   // 字母拾取半径
 #define MAZE_MAX_LETTERS 8
-#define DISTRACTOR_COUNT 2 // 干扰字母数量（正确字母 1 + 干扰 2）
+#define DISTRACTOR_COUNT 4 // 干扰字母数量（正确字母 1 + 干扰 4）
 
 // ── 迷宫世界布局（网格化封闭迷宫，侧视如蚂蚁地穴）───────────────────────────
 // 以 40px 网格砌出封闭的纵向迷宫：四周为实心边界墙，内部为
-// 实心泥土挖出的蜿蜒隧道与竖井，中段设拼写平台。世界尺寸大于屏幕（1280×1440），
+// 实心泥土挖出的蜿蜒隧道与竖井，中段设拼写平台。世界尺寸大于屏幕（1280×1760），
 // 镜头跟随玩家，迷宫可超出屏幕外而不受影响。
 #define MAZE_TILE 40.0f // 网格单元边长
 #define MAZE_COLS 32    // 网格列数（32×40 = 1280 宽）
-#define MAZE_ROWS 36    // 网格行数（36×40 = 1440 高）
+#define MAZE_ROWS 44    // 网格行数（44×40 = 1760 高）
 #define MAZE_WORLD_W (MAZE_COLS * MAZE_TILE)
 #define MAZE_WORLD_H (MAZE_ROWS * MAZE_TILE)
 #define MAZE_GROUND_Y ((MAZE_ROWS - 1) * MAZE_TILE) // 地面顶面 y=1400
@@ -69,10 +63,10 @@ typedef struct MazeData {
 
 // ── 迷宫布局（随机化 Prim 生成大型封闭式蚂蚁地穴迷宫）──────────────────────
 // 以 40px 网格砌出封闭迷宫箱（四周实心边界墙，无需出口），内部用随机化
-// Prim 算法在「房间网格」（5 列 × 10 层，每房间 6×2 格 = 240×80px）中
+// Prim 算法在「房间网格」（5 列 × 10 层，每房间 6×3 格 = 240×120px）中
 // 生长一个随机连通的分支隧道网络。世界尺寸大于屏幕，镜头跟随玩家。
-//   - 房间水平相邻即连通；垂直间以「居中 2 格宽竖井」连通（楼板间隔 3 行
-//     120px，可跳跃；竖井两侧各留 2 格实体地面，任何房间都有可站立之处，
+//   - 房间水平相邻即连通；垂直间以「居中 2 格宽竖井」连通（楼板间隔 4 行
+//     160px，可跳跃；竖井两侧各留 2 格实体地面，任何房间都有可站立之处，
 //     从源头杜绝「随机堵死通往拼写平台道路」的死局）；
 //   - 每局生长约 45%~70% 的房间，形成随机、复杂、带死胡同与环路的分支
 //     网络：已挖房间即“地穴腔室”，未挖部分即泥土隔墙；
@@ -98,16 +92,16 @@ static void CarveRect(MazeData *d, int x0, int y0, int w, int h) {
         d->solid[x][y] = false;
 }
 
-// 房间（rc, rl）占 6×2 格：列 1+6*rc..6+6*rc，行 33-3*rl..34-3*rl；
-// 楼板（下方）行 = 35-3*rl。
+// 房间（rc, rl）占 6×3 格：列 1+6*rc..6+6*rc，行 40-4*rl..42-4*rl；
+// 楼板（下方）行 = 43-4*rl。
 static void CarveRoom(MazeData *d, int rc, int rl) {
-  CarveRect(d, 1 + rc * MAZE_ROOM_W, 33 - 3 * rl, MAZE_ROOM_W, 2);
+  CarveRect(d, 1 + rc * MAZE_ROOM_W, 40 - 4 * rl, MAZE_ROOM_W, 3);
 }
 
-// 房间 rl 与 rl+1 之间的竖井：居中 2 格宽，穿过楼板行 32-3*rl，
+// 房间 rl 与 rl+1 之间的竖井：居中 2 格宽，穿过楼板行 39-4*rl，
 // 两侧各留 2 格实体供玩家站立（保证可达、不堵死）。
 static void CarveShaft(MazeData *d, int rc, int lowerRl) {
-  CarveRect(d, 3 + rc * MAZE_ROOM_W, 32 - 3 * lowerRl, 2, 1);
+  CarveRect(d, 3 + rc * MAZE_ROOM_W, 39 - 4 * lowerRl, 2, 1);
 }
 
 // 把房间的 4 邻域边加入 Prim 前沿；allowDown=false 时禁止向下连接（用于拼写
@@ -147,7 +141,7 @@ static int RoomDegree(const bool carved[MAZE_ROOM_COLS][MAZE_ROOM_LEVELS],
 static Vector2 RoomSpot(int rc, int rl) {
   float x = (genRandomNum(2) ? 220.0f : 60.0f) +
             (float)(rc * MAZE_ROOM_W) * MAZE_TILE;
-  return (Vector2){x, ((float)(35 - 3 * rl)) * MAZE_TILE - 8.0f};
+  return (Vector2){x, ((float)(43 - 4 * rl)) * MAZE_TILE - 8.0f};
 }
 
 // ── 连通性保障（杜绝随机“堵死”）───────────────────────────────────────────
@@ -260,10 +254,10 @@ static void BuildMazeLayout(MazeData *d) {
 
   // 2) 中央拼写大厅（hub）：2 个房间列合并成 12 格宽的大厅
   int hubLevel = 4 + genRandomNum(2); // 4 或 5
-  CarveRect(d, 1 + 2 * MAZE_ROOM_W, 33 - 3 * hubLevel, 2 * MAZE_ROOM_W, 2);
+  CarveRect(d, 1 + 2 * MAZE_ROOM_W, 40 - 4 * hubLevel, 2 * MAZE_ROOM_W, 3);
   carved[2][hubLevel] = true;
   carved[3][hubLevel] = true;
-  int hubFloorRow = 35 - 3 * hubLevel; // 拼写大厅下方楼板行
+  int hubFloorRow = 43 - 4 * hubLevel; // 拼写大厅下方楼板行
   d->character.wordPlatform =
       (Rectangle){((float)(1 + 2 * MAZE_ROOM_W)) * MAZE_TILE,
                   (float)hubFloorRow * MAZE_TILE,
@@ -387,6 +381,7 @@ static void MazeEnter(GameScene *self) {
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f)
     d->cat.health = d->app->playerHealth;
+  d->cat.lastHealth = d->cat.health; // 同步受伤检测基准，避免进场误触发
 
   // 初始化字母拼写组件并注入场景回调（落点解析 + 拼写事件）
   d->owner = self->owner;
@@ -436,6 +431,10 @@ static void MazeEnter(GameScene *self) {
   CharacterPlaceLetters(&d->character, spots, spotIsDeadEnd, spotCount,
                         DISTRACTOR_COUNT);
   d->timeLeft = MAZE_TIME_LIMIT;
+
+  // 隐式全局计时器：进入第一关开始计时（后续关卡保持累计）
+  if (d->level == 1)
+    SpeedrunStart((GameApp *)d->app);
 }
 
 // 实心墙体碰撞：最小穿透深度 AABB 分离解决（可站立、顶头、贴墙滑动）。
@@ -549,9 +548,17 @@ static Vector2 MazeDropResolver(void *ctx, const Player *p) {
   return DropLetterPosition(d, p);
 }
 
-// 拼写正确：经过渡场景进入下一关（类型按 level_flow 权重刷新）
+// 拼写正确：经过渡场景进入下一关（类型按 level_flow 权重刷新）。
+// 通关第 MAX_LEVELS 关判定最终胜利：记录速通最佳时间并回到开始菜单。
 static void MazeOnSpellCorrect(void *ctx) {
   MazeData *d = (MazeData *)ctx;
+  if (d->level >= MAX_LEVELS) {
+    SpeedrunFinish((GameApp *)d->app);
+    GameStackReplace(
+        d->owner,
+        TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+    return;
+  }
   GameStackReplace(d->owner, TransitionSceneCreate(
                                  d->app, LevelFlowCreateNextScene(
                                              d->app, d->level, d->difficulty)));
@@ -602,8 +609,9 @@ static void MazeUpdate(GameScene *self, float dt) {
       AnimationUpdate(&d->cat.animations[d->cat.playerAnimationState], dt);
 }
 
-// HUD：顶部单词提示、左下角 HP 条、右下角倒计时、右上角 ESC 提示、
-// 底部居中的操作提示（Pick & Drop）。
+// HUD：顶部单词提示、左下角生命值条、右下角倒计时、右上角 ESC 提示、
+// 底部居中的操作提示（Pick & Drop）。通用元素（生命值条/时间/ESC）
+// 抽离到 tools/hud.h 供各场景复用。
 static void DrawHud(MazeData *d) {
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
@@ -629,48 +637,20 @@ static void DrawHud(MazeData *d) {
           2,
       (int)topY, meaningSize, BLACK);
 
-  // 左下角：HP 条（颜色随剩余血量变化）
-  const float barW = 150.0f, barH = 14.0f;
-  const float barX = margin, barY = screenH - margin - barH;
-  float ratio =
-      (d->cat.maxHealth > 0.0f) ? d->cat.health / d->cat.maxHealth : 0.0f;
-  if (ratio < 0.0f)
-    ratio = 0.0f;
-  if (ratio > 1.0f)
-    ratio = 1.0f;
-  DrawRectangle((int)barX, (int)barY, (int)barW, (int)barH, Fade(BLACK, 0.3f));
-  Color hpColor = ratio > 0.5f ? GREEN : (ratio > 0.25f ? ORANGE : RED);
-  DrawRectangle((int)barX, (int)barY, (int)(barW * ratio), (int)barH, hpColor);
-  char hpText[32];
-  snprintf(hpText, sizeof(hpText), "HP %d/%d", (int)d->cat.health,
-           (int)d->cat.maxHealth);
-  GameAppDrawText(d->app, hpText, (int)barX, (int)(barY - fontSize - 4),
-                  fontSize, DARKGRAY);
+  // 左下角：生命值条（全局 HUD，传入继承后的当前 HP）
+  HudDrawHealthBar(d->app, d->cat.health, d->cat.maxHealth);
 
-  // 右下角：倒计时
-  int sec = (int)d->timeLeft;
-  char timeText[32];
-  snprintf(timeText, sizeof(timeText), "Time %02d:%02d", sec / 60, sec % 60);
-  int tw = GameAppMeasureText(d->app, timeText, fontSize);
-  GameAppDrawText(d->app, timeText, screenW - (int)margin - tw,
-                  screenH - (int)margin - fontSize, fontSize, DARKGRAY);
+  // 右下角：剩余倒计时（全局 HUD）
+  HudDrawTime(d->app, d->timeLeft);
 
-  // 右上角：ESC 提示
-  const char *escText = "ESC";
-  const int escW = GameAppMeasureText(d->app, escText, fontSize);
-  const float boxW = (float)escW + 20.0f, boxH = (float)fontSize + 12.0f;
-  const float boxX = (float)screenW - margin - boxW, boxY = margin;
-  DrawRectangle((int)boxX, (int)boxY, (int)boxW, (int)boxH, Fade(BLACK, 0.55f));
-  DrawRectangleLines((int)boxX, (int)boxY, (int)boxW, (int)boxH, DARKGRAY);
-  GameAppDrawText(d->app, escText, (int)(boxX + (boxW - (float)escW) * 0.5f),
-                  (int)(boxY + (boxH - (float)fontSize) * 0.5f), fontSize,
-                  WHITE);
+  // 右上角：ESC 暂停提示（全局 HUD）
+  HudDrawEscHint(d->app);
 
-  // 底部居中：操作提示（拾取/放下）。恢复 16 字号，并抬升到 HP 条上方，
-  // 避免与左下角 HP 条/HP 文本、右下角计时器重合。
+  // 底部居中：操作提示（拾取/放下）。抬升到 HP 条上方，避免与左下角
+  // HP 条/HP 文本、右下角计时器重合（HudDrawHealthBar 条高 16）。
   const char *help = "Pick & Drop : Z";
   const int helpSize = fontSize;
-  const int helpY = screenH - (int)margin - (int)barH - helpSize - 6;
+  const int helpY = screenH - (int)margin - 16 - helpSize - 6;
   GameAppDrawText(d->app, help,
                   (screenW - GameAppMeasureText(d->app, help, helpSize)) / 2,
                   helpY, helpSize, BLACK);

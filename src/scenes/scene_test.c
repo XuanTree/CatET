@@ -1,24 +1,13 @@
-#include "scenes/scene_test.h"
-#include "entities/enemy.h"
-#include "entities/flag.h"
-#include "entities/platform.h"
-#include "entities/player.h"
-#include "raylib.h"
-#include "scenes/scene_fail.h"
-#include "scenes/scene_transition.h"
-#include "systems/level_flow.h"
-#include "tools/camera.h"
-#include "tools/raygui.h"
-#include <math.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include "game.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 平台跳跃关卡（docs/game_instructions.md 关卡设计 3，核心玩法）：
-//   - 玩家在平台与地面之间跳跃前进，无显式倒计时。
-//   - 关卡终点设有小红旗，玩家触碰即通关，进入下一关（关卡类型按权重刷新）。
-//   - HP 归零判定失败。
+// 平台跳跃式关卡（docs/game_instructions.md 关卡设计 3，核心玩法）：
+// 玩家在平台与地面之间跳跃前进，关卡终点设有小红旗，玩家触碰即通关，
+// 进入下一关（关卡类型按权重刷新）。
+// 玩法一（极速拼写）暂未独立实现，当前由本场景代替，关卡限时 40 秒：
+// 右下角显示剩余倒计时，倒计时归零扣除一定生命值并重置。
+// 通关第 MAX_LEVELS 关判定最终胜利（记录速通最佳时间，回到开始菜单）。
+// HP 归零判定失败。
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 场景私有数据：栈持有并负责释放
@@ -33,12 +22,18 @@ typedef struct TestData {
   Flag flag;             // 终点小红旗：触碰即通关
   int level;             // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
   int difficulty;        // 难度（0/1/2，传递给后续关卡）
+  float timeLeft;        // 关卡限时倒计时（秒，玩法一由本场景暂代限时 40s）
   Rectangle source;      // 当前动画帧源矩形
 } TestData;
 
 // 玩家掉出屏幕外此距离后触发传送回最近的着陆表面
 // （取接近一屏高度，避免玩家刚掉出底部一点就被传送，打断坠落体验）
 #define FALL_RESPAWN_MARGIN 400.0f
+
+// 关卡限时：玩法一（极速拼写）由本场景暂代，限时 40 秒
+#define TEST_TIME_LIMIT 40.0f
+// 限时倒计时归零扣除的生命值（并重置倒计时，给玩家继续本关的机会）
+#define TEST_TIME_PENALTY 20.0f
 
 // 可站立着陆表面：地面矩形 + 各平台顶面（水平中心 + 顶面 y）
 typedef struct LandingSurface {
@@ -65,7 +60,7 @@ static void RespawnIfFallen(TestData *d, Player *player) {
       .centerX = 500.0f, // 地面矩形 (0, logicHeight - 50) 宽 1000
       .topY = (float)(d->app->logicHeight - 50),
   };
-  Platform *plats[] = {&d->platform, &d->platform_m};
+  Platform *plats[] = {&d->platform};
   for (int i = 0; i < 2; i++) {
     if (plats[i]->size.x <= 0.0f || plats[i]->size.y <= 0.0f)
       continue; // 加载失败（尺寸无效）的平台不参与
@@ -116,8 +111,10 @@ static void TestEnter(GameScene *self) {
   d->cat = (Player){0};
   InitPlayer(&d->cat);
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
-  if (d->app->playerHealth > 0.0f)
+  if (d->app->playerHealth > 0.0f) {
     d->cat.health = d->app->playerHealth;
+  }
+  d->cat.lastHealth = d->cat.health; // 同步受伤检测基准，避免进场误触发
   d->platform = (Platform){0};
   InitJumpPlatforms(&d->platform, (Vector2){100, 350}, SMALL);
   d->platform_m = (Platform){0};
@@ -133,6 +130,13 @@ static void TestEnter(GameScene *self) {
   InitEnemy(&d->enemy, (Vector2){450, 200});
   d->enemy.onBattle = TestOnBattle;
   d->enemy.battleCtx = self;
+
+  // 关卡限时：玩法一（极速拼写）由本场景暂代，限时 40 秒
+  d->timeLeft = TEST_TIME_LIMIT;
+
+  // 隐式全局计时器：进入第一关开始计时（后续关卡保持累计）
+  if (d->level == 1)
+    SpeedrunStart((GameApp *)d->app);
 
   // 初始化场景相机
   InitSceneCamera(&d->sceneCamera, d->app->logicWidth, d->app->logicHeight,
@@ -151,11 +155,28 @@ static void TestUpdate(GameScene *self, float dt) {
 
   // 触碰终点小红旗 → 通关：经过渡场景进入下一关（类型按权重刷新）
   if (FlagCheckCollision(&d->flag, PlayerRect(&d->cat))) {
-    GameStackReplace(
-        self->owner,
-        TransitionSceneCreate(
-            d->app, LevelFlowCreateNextScene(d->app, d->level, d->difficulty)));
+    if (d->level >= MAX_LEVELS) {
+      // 最终通关（第 MAX_LEVELS 关）：记录速通最佳时间，经过渡回到开始菜单
+      SpeedrunFinish((GameApp *)d->app);
+      GameStackReplace(
+          self->owner,
+          TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+    } else {
+      GameStackReplace(
+          self->owner,
+          TransitionSceneCreate(d->app, LevelFlowCreateNextScene(
+                                            d->app, d->level, d->difficulty)));
+    }
     return;
+  }
+
+  // 关卡限时（40 秒）：倒计时归零扣血并重置（给玩家继续本关的机会）
+  d->timeLeft -= dt;
+  if (d->timeLeft <= 0.0f) {
+    d->cat.health -= TEST_TIME_PENALTY;
+    if (d->cat.health < 0.0f)
+      d->cat.health = 0.0f;
+    d->timeLeft = TEST_TIME_LIMIT;
   }
 
   // 触碰提醒窗口：画面定格（玩家与整个世界不更新，玩家不可移动），
@@ -200,17 +221,14 @@ static void TestUpdate(GameScene *self, float dt) {
 
 // 关卡全局 HUD：左上角关卡号、顶部通关提示、左下角生命值条、
 // 右下角游戏时间、右上角 ESC 提示。在场景相机之外绘制，固定于逻辑屏幕坐标。
+// 通用元素（关卡号/生命值条/时间/ESC）抽离到 tools/hud.h 供各场景复用。
 static void DrawHud(TestData *d) {
+  const int screenW = d->app->logicWidth;
   const float margin = 12.0f;
   const int fontSize = 16;
-  const int screenW = d->app->logicWidth;
-  const int screenH = d->app->logicHeight;
 
-  // 左上角：当前关卡编号
-  char levelText[24];
-  snprintf(levelText, sizeof(levelText), "Level : %d", d->level);
-  GameAppDrawText(d->app, levelText, (int)margin, (int)margin, fontSize,
-                  DARKGRAY);
+  // 左上角：当前关卡编号（全局 HUD）
+  HudDrawLevel(d->app, d->level);
 
   // 顶部居中：通关提示（触碰红旗）
   // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍：像素字点采样在整数倍
@@ -221,58 +239,14 @@ static void DrawHud(TestData *d) {
                   (screenW - GameAppMeasureText(d->app, goalHint, 16)) / 2,
                   (int)(margin + fontSize + 4), 16, GRAY);
 
-  // 左下角：生命值可视化进度条（颜色随剩余血量变化）。
-  // bar 起点预留左侧 "HP" 标签空间，避免 raygui 左侧文本绘制到屏幕外。
-  const float barW = 150.0f;
-  const float barH = 16.0f;
-  const float labelW = 24.0f; // "HP" 标签宽 + 间距
-  const float barX = margin + labelW;
-  const float barY = (float)screenH - margin - barH;
-  const Rectangle hpBounds = {
-      .x = barX, .y = barY, .width = barW, .height = barH};
+  // 左下角：生命值条（全局 HUD，传入继承后的当前 HP）
+  HudDrawHealthBar(d->app, d->cat.health, d->cat.maxHealth);
 
-  char hpText[16];
-  snprintf(hpText, sizeof(hpText), "%d/%d", (int)d->cat.health,
-           (int)d->cat.maxHealth);
-  float hpValue = d->cat.health;
-  const float hpRatio =
-      (d->cat.maxHealth > 0.0f) ? d->cat.health / d->cat.maxHealth : 0.0f;
-  const int prevTextSize = GuiGetStyle(DEFAULT, TEXT_SIZE);
-  const int prevBarColor = GuiGetStyle(PROGRESSBAR, BASE_COLOR_PRESSED);
-  // 血量 >50% 绿色，25%~50% 橙色，<=25% 红色
-  if (hpRatio <= 0.25f) {
-    GuiSetStyle(PROGRESSBAR, BASE_COLOR_PRESSED, 0xe74c3cff);
-  } else if (hpRatio <= 0.50f) {
-    GuiSetStyle(PROGRESSBAR, BASE_COLOR_PRESSED, 0xe67e22ff);
-  } else {
-    GuiSetStyle(PROGRESSBAR, BASE_COLOR_PRESSED, 0x27ae60ff);
-  }
-  GuiSetStyle(DEFAULT, TEXT_SIZE, fontSize);
-  GuiProgressBar(hpBounds, "HP", hpText, &hpValue, 0.0f, d->cat.maxHealth);
-  GuiSetStyle(DEFAULT, TEXT_SIZE, prevTextSize);
-  GuiSetStyle(PROGRESSBAR, BASE_COLOR_PRESSED, prevBarColor);
+  // 右下角：关卡限时倒计时（40 秒，mm:ss）
+  HudDrawTime(d->app, d->timeLeft);
 
-  // 右下角：当前游戏时间（mm:ss，来自全局计时器 runTime，右对齐）
-  const int totalSec = (int)d->app->runTime;
-  char timeText[32];
-  snprintf(timeText, sizeof(timeText), "Time %02d:%02d", totalSec / 60,
-           totalSec % 60);
-  const int timeW = GameAppMeasureText(d->app, timeText, fontSize);
-  GameAppDrawText(d->app, timeText, screenW - (int)margin - timeW,
-                  screenH - (int)margin - fontSize, fontSize, DARKGRAY);
-
-  // 右上角：方框内含 ESC 提示（提示玩家按 ESC 暂停）
-  const char *escText = "ESC";
-  const int escW = GameAppMeasureText(d->app, escText, fontSize);
-  const float boxW = (float)escW + 20.0f;
-  const float boxH = (float)fontSize + 12.0f;
-  const float boxX = (float)screenW - margin - boxW;
-  const float boxY = margin;
-  DrawRectangle((int)boxX, (int)boxY, (int)boxW, (int)boxH, Fade(BLACK, 0.55f));
-  DrawRectangleLines((int)boxX, (int)boxY, (int)boxW, (int)boxH, DARKGRAY);
-  GameAppDrawText(d->app, escText, (int)(boxX + (boxW - (float)escW) * 0.5f),
-                  (int)(boxY + (boxH - (float)fontSize) * 0.5f), fontSize,
-                  WHITE);
+  // 右上角：ESC 暂停提示（全局 HUD）
+  HudDrawEscHint(d->app);
 }
 
 static void TestDraw(GameScene *self) {

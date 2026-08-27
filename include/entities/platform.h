@@ -2,7 +2,7 @@
 #define PLATFORM_H
 
 #pragma once
-#include "player.h"
+#include "entities/player.h"
 #include <raylib.h>
 
 typedef enum PlatformType {

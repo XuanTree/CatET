@@ -34,6 +34,8 @@ typedef struct Player {
   bool isOnTheGround;
   bool facingRight; // 面朝方向
   bool isMovable;   // 规定玩家是否可以移动，在战斗场景中，玩家不允许移动
+  float hitTimer;   // 受伤动画剩余时长（秒，>0 表示处于受伤状态）
+  float lastHealth; // 上一帧生命值（用于检测生命值下降以触发受伤动画）
 } Player;
 
 void InitPlayer(Player *player);

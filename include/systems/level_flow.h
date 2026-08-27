@@ -14,8 +14,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef enum LevelType {
-  LEVEL_TYPE_PLATFORM = 0, // 平台跳跃（核心玩法）
-  LEVEL_TYPE_MAZE,         // 迷宫解密
+  LEVEL_TYPE_PLATFORM = 0,   // 平台跳跃（核心玩法）
+  LEVEL_TYPE_PLATFORM_TOWER, // 平台跳跃·爬塔（随机平台+顶部红旗）
+  LEVEL_TYPE_MAZE,           // 迷宫解密
   LEVEL_TYPE_COUNT
 } LevelType;
 

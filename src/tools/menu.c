@@ -1,5 +1,4 @@
-#include "tools/menu.h"
-#include <raylib.h>
+#include "game.h"
 
 void MenuNavInit(MenuNav *nav, int count) {
   nav->selected = 0;

@@ -1,7 +1,4 @@
-#include "scenes/scene_pause.h"
-#include "scenes/scene_start.h"
-#include "tools/menu.h"
-#include "tools/raygui.h"
+#include "game.h"
 #include <raylib.h>
 
 // ── 暂停菜单交互结果 ───────────────────────────────────────────────

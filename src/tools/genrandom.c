@@ -1,4 +1,4 @@
-#include "tools/genrandom.h"
+#include "game.h"
 #include <stdbool.h>
 
 // 随机数只需在进程内播种一次（code_style §11 要求：避免 srand(time(NULL))

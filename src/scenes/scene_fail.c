@@ -1,7 +1,4 @@
-#include "scenes/scene_fail.h"
-#include "scenes/scene_start.h"
-#include "tools/menu.h"
-#include "tools/raygui.h"
+#include "game.h"
 #include <raylib.h>
 #include <stdlib.h>
 
@@ -28,6 +25,8 @@ typedef struct FailData {
 
 static void FailEnter(GameScene *self) {
   FailData *d = (FailData *)self->data;
+  // 失败：停止隐式全局计时器（不记录数据，仅成功通关才记录）
+  SpeedrunStop(d->app);
   MenuNavInit(&d->nav, FAIL_ITEM_COUNT);
 }
 

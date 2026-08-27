@@ -1,8 +1,4 @@
-#include "scenes/scene_start.h"
-#include "scenes/scene_transition.h"
-#include "systems/level_flow.h"
-#include "tools/menu.h"
-#include "tools/raygui.h"
+#include "game.h"
 #include <raylib.h>
 
 // ── 开始菜单交互结果 ───────────────────────────────────────────────
@@ -209,6 +205,22 @@ static void StartDraw(GameScene *self) {
   GameAppDrawText(d->app, subtitle,
                   (screenW - GameAppMeasureText(d->app, subtitle, subSize)) / 2,
                   screenH / 4 + titleSize / 2 + 12, subSize, GRAY);
+
+  // 最佳通关时间（主菜单显示）：来自隐式全局计时器，仅成功通关才持久化
+  // 记录（save.json），更优的数据会替换旧记录；尚无记录时显示占位 "--:--"。
+  if (d->screen == START_SCREEN_MAIN) {
+    const int bestSize = 16;
+    const int bestY = screenH / 4 + titleSize / 2 + 12 + subSize + 18;
+    const char *bestText =
+        (d->app->bestTime >= 0.0f)
+            ? TextFormat("Best Time %02d:%02d", (int)d->app->bestTime / 60,
+                         (int)d->app->bestTime % 60)
+            : "Best Time --:--";
+    GameAppDrawText(d->app, bestText,
+                    (screenW - GameAppMeasureText(d->app, bestText, bestSize)) /
+                        2,
+                    bestY, bestSize, DARKGRAY);
+  }
 
   // 按当前所在菜单绘制对应按钮组
   if (d->screen == START_SCREEN_DIFFICULTY) {

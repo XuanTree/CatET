@@ -1,9 +1,4 @@
-#include "systems/words_loader.h"
-#include "tools/genrandom.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
+#include "game.h"
 #define WORDS_INIT_CAPACITY 512
 
 // 从释义字符串中提取首个词性缩写（第一个空白字符之前的 token）。

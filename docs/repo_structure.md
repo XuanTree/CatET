@@ -102,12 +102,13 @@ music/及sounds/后续可能不会公开上传到仓库中
 |---|---|---|
 | `level_flow` | 关卡流程：100 关推进、5:3:2 权重刷新、每 20 关 Boss 关卡、难度词库切换 | 权重与 Boss 节奏（[`game_instructions.md`](game_instructions.md:79)、[`game_instructions.md`](game_instructions.md:95)） |
 | `words_loader` | CET4/CET6 词库加载与解析（单词 / 词性 / 释义，多释义取用约定） | 拼写与战斗选词数据源 |
-| `save_data` | 最佳通关时间读写（`assets/data/save.json`） | 数据持久化（[`game_instructions.md`](game_instructions.md:101)） |
-| `speedrun` | 全局计时器与速通记录（首通时间、最佳记录） | 全局计时（[`game_instructions.md`](game_instructions.md:19)） |
+| `save_data` | 最佳通关时间读写（`assets/data/save.json`）——已实现 | 数据持久化（[`game_instructions.md`](game_instructions.md:112)） |
+| `speedrun` | 隐式全局计时器：进入第一关开始计时、失败/通关结束、仅成功通关记录最佳时间（配合 `save_data` 持久化与开始菜单显示）——已实现 | 全局计时（[`game_instructions.md`](game_instructions.md:23)） |
 
 ### 4.5 tools/ — 工具层
 
-现有：`animation`、`camera`、`genrandom`、`raygui`、`strings`、`timer`。提供与具体玩法无关的通用能力，供场景/实体/系统复用。
+现有：`animation`、`camera`、`genrandom`、`hud`、`raygui`、`strings`、`timer`。提供与具体玩法无关的通用能力，供场景/实体/系统复用。
+其中 `hud`（`include/tools/hud.h` / `src/tools/hud.c`）为从 `scene_test` 抽离的全局关卡 HUD：生命值条、关卡号、时间、ESC 提示，供各场景复用（生命值由各场景 onEnter 从 `app->playerHealth` 继承后传入）。
 
 ## 5. 设计需求 ↔ 目录映射速查
 

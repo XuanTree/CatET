@@ -1,6 +1,7 @@
 #ifndef TOOLS_MENU_H
 #define TOOLS_MENU_H
 
+#pragma once
 #include <stdbool.h>
 
 // ─────────────────────────────────────────────────────────────────────────────

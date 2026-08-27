@@ -1,10 +1,4 @@
-#include "entities/player.h"
-#include "core/game_config.h"
-#include "raylib.h"
-#include "tools/animation.h"
-#include "tools/timer.h"
-#include <math.h>
-#include <stdbool.h>
+#include "game.h"
 
 #define GRAVITY 980.0f
 #define MOVE_SPEED 240.0f
@@ -15,7 +9,9 @@
 // 玩家帧贴图为 16×16，与全局 GAME_SCALE 统一缩放，保证与平台同比例
 #define PLAYER_WIDTH (16.0f * GAME_SCALE)
 #define PLAYER_HEIGHT (16.0f * GAME_SCALE)
-#define AFK_TIMEOUT 20.0f // 挂机 20 秒后自动进入睡眠动画
+#define AFK_TIMEOUT 20.0f         // 挂机 20 秒后自动进入睡眠动画
+#define HIT_DURATION 0.8f         // 受伤动画总时长（秒，强制播放 0.8s）
+#define HIT_KNOCKBACK_UP (-260.f) // 受伤时强制轻微上跳（增强视觉）
 
 void InitPlayer(Player *player) {
   player->health = 100.f;
@@ -51,6 +47,14 @@ void InitPlayer(Player *player) {
       TextFormat("%sassets/sprites/cat_sleep.png", GetApplicationDirectory()));
   AnimationInit(&player->animations[SLEEP], &player->sleepTexture, 4, 0.6f,
                 true);
+
+  // 初始化 HIT 动画（cat_hit.png 为 16×16×4 帧横排，不循环，总时长 0.8s）
+  player->hitTexture = LoadTexture(
+      TextFormat("%sassets/sprites/cat_hit.png", GetApplicationDirectory()));
+  AnimationInit(&player->animations[HIT], &player->hitTexture, 4,
+                HIT_DURATION / 4.f, false);
+  player->hitTimer = 0.f;
+  player->lastHealth = player->health;
 }
 
 void UpdatePlayer(Player *player, float dt) {
@@ -59,6 +63,14 @@ void UpdatePlayer(Player *player, float dt) {
   bool jumpHeld = IsKeyDown(KEY_W) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_SPACE);
   bool jumpReleased =
       IsKeyReleased(KEY_W) || IsKeyReleased(KEY_UP) || IsKeyReleased(KEY_SPACE);
+
+  // 受伤检测：生命值下降时强制播放 0.8s 受伤动画，并轻微上跳增强视觉
+  if (player->health < player->lastHealth) {
+    player->hitTimer = HIT_DURATION;
+    player->velocity.y = HIT_KNOCKBACK_UP;
+    player->isOnTheGround = false;
+  }
+  player->lastHealth = player->health;
 
   // 起跳：在地面上且跳跃键按下或按住时立即起跳。
   // 用「按住」判定，保证一直按住空格时落地瞬间能无缝衔接下一次跳跃。
@@ -123,7 +135,13 @@ void UpdatePlayer(Player *player, float dt) {
   float afkTime = GetElapsedTime(&player->afkTimer);
 
   // 根据玩家不同的状态绘制不同的动画
-  if (!player->isOnTheGround) {
+  // 受伤状态优先：强制播放受伤动画（不循环），0.8s 后自动恢复
+  if (player->hitTimer > 0.f) {
+    player->hitTimer -= dt;
+    if (player->hitTimer <= 0.f)
+      player->hitTimer = 0.f;
+    player->playerAnimationState = HIT;
+  } else if (!player->isOnTheGround) {
     player->playerAnimationState = JUMP;
   } else if (fabsf(player->velocity.x) > MOVE_SPEED) {
     player->playerAnimationState = RUN;
@@ -158,6 +176,9 @@ void DrawPlayer(Player *player, Rectangle source) {
   case JUMP:
     DrawTexturePro(player->jumpTexture, src, dest, (Vector2){0, 0}, 0.0f,
                    WHITE);
+    break;
+  case HIT:
+    DrawTexturePro(player->hitTexture, src, dest, (Vector2){0, 0}, 0.0f, WHITE);
     break;
   case WALK:
   case RUN:

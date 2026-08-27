@@ -20,8 +20,14 @@ typedef struct GameApp {
   // 0 表示从满血开始（新游戏 / 返回开始菜单时由开始场景重置为 0）。
   float playerHealth;
   float runTime; // 全局关卡运行计时（秒），暂停时不计，供关卡 HUD / 速通参考
-  Image icon;    // 窗口图标（保留以便最后卸载）
-  Sound uiSound; // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
+  // ── 隐式全局计时器（速通，见 systems/speedrun）──────────────────────────
+  // 从玩家进入第一关开始计时，失败或通关结束；仅成功通关记录最佳时间并
+  // 显示在开始菜单（更优则替换），持久化到 assets/data/save.json。
+  float speedrunElapsed; // 当前局速通已计时间（秒）
+  bool speedrunActive;   // 当前局是否在速通计时中
+  float bestTime;        // 最佳通关时间（秒），< 0 表示尚无记录
+  Image icon;            // 窗口图标（保留以便最后卸载）
+  Sound uiSound;         // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
   bool uiSoundValid; // 是否成功加载 UI 音效（无效时静默跳过播放，避免空操作）
   Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
   bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）

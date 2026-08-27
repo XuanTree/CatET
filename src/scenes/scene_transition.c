@@ -1,6 +1,4 @@
-#include "scenes/scene_transition.h"
-#include "core/game_config.h"
-#include "tools/timer.h"
+#include "game.h"
 #include <raylib.h>
 #include <stdlib.h>
 

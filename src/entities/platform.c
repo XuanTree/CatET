@@ -1,6 +1,4 @@
-#include "entities/platform.h"
-#include "core/game_config.h"
-#include "raylib.h"
+#include "game.h"
 
 // 内部实现：按 platform->platformType 加载纹理，并把贴图尺寸/顶部留白换算为
 // 世界坐标（乘 GAME_SCALE）存储，与玩家 size 语义一致。仅由 InitJumpPlatforms

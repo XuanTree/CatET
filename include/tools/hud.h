@@ -1,0 +1,34 @@
+#ifndef TOOLS_HUD_H
+#define TOOLS_HUD_H
+
+#pragma once
+#include "core/gameapp.h"
+#include <raylib.h>
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 全局关卡 HUD 绘制工具（从 scene_test.c 抽离的可复用组件）：
+//   提供各场景共用的 HUD 元素：左下角生命值条、左上角关卡号、右下角时间、
+//   右上角 ESC 暂停提示。固定绘制于逻辑屏幕坐标（在场景相机之外调用），
+//   供平台跳跃、迷宫解密等任意场景复用，避免每个场景各自实现一遍。
+//
+//   生命值继承：玩家实体进入场景时已从 app->playerHealth 恢复上一关剩余
+//   HP（见各场景 onEnter），HUD 只负责把当前玩家的 health / maxHealth
+//   传入 HudDrawHealthBar 绘制，无需关心继承细节。
+// ─────────────────────────────────────────────────────────────────────────────
+
+// 左下角生命值条：HP 标签 + 数值文本（cur/max）+ 进度条，
+// 颜色随剩余血量变化（>50% 绿，25%~50% 橙，<=25% 红）。
+// health / maxHealth 为当前玩家生命值与上限（进入场景时已继承
+// app->playerHealth）。
+void HudDrawHealthBar(const GameApp *app, float health, float maxHealth);
+
+// 左上角：当前关卡编号（"Level : %d"）。
+void HudDrawLevel(const GameApp *app, int level);
+
+// 右下角：游戏时间 / 剩余时间（"Time mm:ss"，右对齐）。
+void HudDrawTime(const GameApp *app, float timeSeconds);
+
+// 右上角：方框内 ESC 提示（提示玩家按 ESC 暂停）。
+void HudDrawEscHint(const GameApp *app);
+
+#endif // TOOLS_HUD_H

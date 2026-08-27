@@ -1,6 +1,4 @@
 #include "game.h"
-#include "core/gameapp.h"
-#include "core/gamestack.h"
 
 // 逻辑分辨率固定不变，窗口放大时通过 RenderTexture 等比缩放，画面不变糊
 #define LOGIC_WIDTH 640
@@ -9,6 +7,8 @@
 void Run() {
   // 框架初始化：窗口、图标、音频、固定分辨率渲染目标
   GameApp app = GameAppInit(LOGIC_WIDTH, LOGIC_HEIGHT, "CatET");
+  // 隐式全局计时器初始化：读取已持久化的最佳通关时间供开始菜单显示
+  SpeedrunInit(&app);
 
   // 创建场景栈并压入初始场景：开始菜单（Play 后经栈替换进入测试关卡）
   GameStack *stack = GameStackCreate();
@@ -43,6 +43,7 @@ void Run() {
     if (dt > 0.05f)
       dt = 0.05f;
     app.runTime += dt;          // 全局运行计时：暂停时不计，供关卡 HUD 显示
+    SpeedrunTick(&app, dt);     // 隐式全局计时器：从第一关开始累计到失败/通关
     GameStackUpdate(stack, dt); // 帧首 flush 切换请求 + 驱动栈顶场景
 
     // 统一绘制：先绘制到固定分辨率渲染目标，再等比缩放到窗口

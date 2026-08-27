@@ -1,4 +1,4 @@
-#include "entities/flag.h"
+#include "game.h"
 
 // 红旗几何常量（世界坐标像素）：旗杆高 64，红旗三角 34x22，底座 22x6。
 #define FLAG_POLE_HEIGHT 64.0f

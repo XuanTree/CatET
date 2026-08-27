@@ -1,11 +1,4 @@
-#include "tools/strings.h"
-
-#include <limits.h> // INT_MAX
-#include <stdint.h> // SIZE_MAX
-#include <stdlib.h> // malloc / realloc / free
-#include <string.h> // strlen / memcpy / memmove / memcmp / strcmp
-
-// ─── 私有工具 ───────────────────────────────────────────────────────────────
+#include "game.h"
 
 // 返回安全的只读 C 字符串：data 为 NULL（分配失败）时视为空串
 static const char *StringCStr(const String *s) {

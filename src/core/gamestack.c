@@ -1,5 +1,4 @@
-#include "core/gamestack.h"
-#include <string.h>
+#include "game.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GameStack 实现：

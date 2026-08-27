@@ -21,13 +21,13 @@ BOOL __stdcall SetForegroundWindow(HWND hWnd);
 HWND __stdcall SetFocus(HWND hWnd);
 void __stdcall keybd_event(BYTE bVk, BYTE bScan, DWORD dwFlags,
                            ULONG_PTR dwExtraInfo);
+// dwmapi.dll：DwmSetWindowAttribute。用于禁用 DWM 窗口过渡动画（见
+// DisableWindowTransitions 注释）。链接 dwmapi 由 CMake 在 Windows 平台完成。
+long __stdcall DwmSetWindowAttribute(HWND hwnd, DWORD dwAttribute,
+                                     const void *pvAttribute,
+                                     DWORD cbAttribute);
 #endif
-#include "core/gameapp.h"
-#include "tools/raygui.h"
-#include "tools/strings.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "game.h"
 
 // ── 全局 UI 字体码点收集 ─────────────────────────────────────────────
 // LoadFont 只生成 ASCII(32-126) 字形且基高默认 10，既无法渲染词库中文释义，
@@ -142,14 +142,19 @@ static int *CollectWordBankCodepoints(const char *appDir, int *outCount) {
   return cps;
 }
 
+// 禁用 Windows DWM 窗口过渡动画（定义见文件下方 ForceWindowFocus 附近）
+static void DisableWindowTransitions(void);
+
 GameApp GameAppInit(const int logicWidth, const int logicHeight,
                     const char *title) {
   GameApp app = {0};
   app.logicWidth = logicWidth;
   app.logicHeight = logicHeight;
 
-  // 允许窗口自由缩放
-  SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+  // 允许窗口自由缩放 + 垂直同步：vsync 让呈现与显示器刷新对齐，消除撕裂、
+  // 稳定帧间隔（配合 SetTargetFPS(60)），并降低满屏等比缩放时的 GPU 负载，
+  // 减少全屏/小窗切换过程中的画面抖动与卡顿。
+  SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
   InitWindow(logicWidth, logicHeight, title);
   // 禁用 ESC 默认关闭窗口：ESC 交给主循环用于弹出暂停界面
   SetExitKey(0);
@@ -157,6 +162,11 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   HideCursor();
   // 限制最小窗口尺寸，避免被压缩得过小
   SetWindowMinSize(logicWidth, logicHeight);
+
+  // 禁用 DWM 窗口过渡动画：Windows 11 在无边框全屏/小窗切换（窗口样式 +
+  // 尺寸同时变化）时会播放合成过渡动画，动画期间 DWM 节流应用帧呈现，
+  // 表现为切换瞬间的严重卡顿。关掉后切换立即完成，无动画无卡顿。
+  DisableWindowTransitions();
 
   // 窗口图标
   Image icon = LoadImage(
@@ -166,8 +176,10 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
 
   // 固定分辨率渲染目标：内部始终按逻辑分辨率渲染，防止放大后画面模糊
   app.target = LoadRenderTexture(logicWidth, logicHeight);
-  // 双线性过滤，让缩放后的画面保持平滑清晰
-  SetTextureFilter(app.target.texture, TEXTURE_FILTER_BILINEAR);
+  // 最近邻（Point）过滤：缩放后的画面按像素等比例放大、边缘锐利，像素风
+  // 画面最清晰（精灵贴图走 raylib 默认的 Point 采样、UI 字体也已用 Point，
+  // 这里把最终缩放呈现统一成 Point，实现全链路像素级表现）
+  SetTextureFilter(app.target.texture, TEXTURE_FILTER_POINT);
 
   app.isPaused = false;
   SetTargetFPS(60);
@@ -262,12 +274,18 @@ void GameAppPresent(GameApp *app) {
 
 // 全屏切换后需要强制聚焦的剩余帧数。Windows 异步处理窗口样式/尺寸切换
 // （SetWindowLongPtr + SetWindowPos），切换瞬间调用聚焦 API 会被随后到达的
-// 窗口消息覆盖，因此需要跨越足够长的帧数持续重试。
+// 窗口消息覆盖，因此需要跨越若干帧持续重试。
 static int s_refocusFrames = 0;
 // 当前是否处于无边框全屏模式（由 ToggleBorderlessWindowed 切换）
 static bool s_borderless = false;
-// 切换后强制聚焦的持续帧数：约 2 秒（60 FPS），覆盖异步切换的耗时
-#define REFOCUS_FRAMES 120
+// 切换后强制聚焦的缓冲帧数：约 1 秒（60 FPS），覆盖异步切换的耗时
+#define REFOCUS_FRAMES 60
+// 聚焦尝试节流间隔（帧）：ForceWindowFocus 内的 SetForegroundWindow /
+// keybd_event 是重量级窗口管理调用，逐帧无条件执行会扰动 DWM 合成、让窗口
+// 管理器在前台反复抢占，导致切换后持续卡顿（性能优化点）。节流后缓冲期内
+// 每秒最多约 12 次尝试（60FPS/5），既保证抢回焦点又保持流畅。
+#define REFOCUS_THROTTLE 5
+static int s_focusThrottle = 0; // 距离下次 ForceWindowFocus 的节流计数
 
 // 强制窗口获得键盘焦点。
 // 仅调用 raylib 的 SetWindowFocused 在 Windows 前台锁（Foreground Lock）下
@@ -292,6 +310,19 @@ static void ForceWindowFocus(void) {
   SetWindowFocused();
 }
 
+// 禁用 Windows DWM 窗口过渡动画（DWMWA_TRANSITIONS_FORCEDISABLED = 3）。
+// 该属性挂在窗口上、对后续样式/尺寸变化持续生效；切换全屏后再调一次以防
+// 个别驱动/系统版本在样式重建后重置该属性。非 Windows 平台为空操作。
+static void DisableWindowTransitions(void) {
+#if defined(_WIN32)
+  HWND hwnd = (HWND)GetWindowHandle();
+  if (hwnd != 0) {
+    BOOL disabled = 1; // TRUE
+    DwmSetWindowAttribute(hwnd, 3, &disabled, sizeof(BOOL));
+  }
+#endif
+}
+
 void GameAppPollGlobalInput(void) {
   // F11 或 Alt+Enter 切换全屏
   if (IsKeyPressed(KEY_F11) ||
@@ -303,17 +334,26 @@ void GameAppPollGlobalInput(void) {
     // （W/S/↑↓/Z/X）就表现为"卡住"。无边框全屏只调整窗口尺寸/位置、不切换
     // 显示模式，从根源规避该问题。
     ToggleBorderlessWindowed();
+    DisableWindowTransitions(); // 切换后保持 DWM 过渡动画禁用，防止卡顿复发
     s_borderless = !s_borderless;
-    s_refocusFrames = REFOCUS_FRAMES; // 切换后持续强制聚焦以覆盖异步处理
+    s_refocusFrames = REFOCUS_FRAMES; // 切换后缓冲期内持续确保聚焦
   }
 
-  // 无边框全屏期间持续确保窗口聚焦，避免失焦导致键盘输入失效；
-  // 切换后的延迟帧内无条件强制聚焦，弥补切换瞬间窗口未就绪的情况。
-  if ((s_borderless && !IsWindowFocused()) || (s_refocusFrames > 0)) {
+  // 仅当窗口真正失焦时才尝试抢回焦点，且节流执行，避免逐帧骚扰窗口管理器
+  // （性能优化：SetForegroundWindow/keybd_event 是重量级调用，无条件逐帧
+  // 调用会扰动 DWM 合成、造成切换后持续 1~2 秒的严重卡顿）。触发条件：
+  //  1) 无边框全屏期间失焦 —— 保证键盘输入持续可用；
+  //  2) 切换后的缓冲期内失焦 —— 弥补 Windows 异步切换瞬间窗口未就绪。
+  bool lostFocus = !IsWindowFocused();
+  bool wantFocus = (s_borderless || s_refocusFrames > 0) && lostFocus;
+  if (wantFocus && s_focusThrottle <= 0) {
     ForceWindowFocus();
-    if (s_refocusFrames > 0)
-      s_refocusFrames--;
+    s_focusThrottle = REFOCUS_THROTTLE;
   }
+  if (s_focusThrottle > 0)
+    s_focusThrottle--;
+  if (s_refocusFrames > 0)
+    s_refocusFrames--;
 }
 
 void GameAppClose(GameApp *app) {

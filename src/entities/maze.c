@@ -1,7 +1,4 @@
-#include "entities/maze.h"
-#include "tools/genrandom.h"
-#include <stdbool.h>
-#include <stdlib.h>
+#include "game.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 迷宫生成实现：DFS 递归回溯生成完美迷宫（任意两格间恰有一条通路），
@@ -58,10 +55,18 @@ static void Carve(Maze *maze, MazeCell *cells, int x, int y) {
   for (int d = 0; d < 4; d++) {
     int nx = x, ny = y;
     switch (dirs[d]) {
-    case 0: ny = y - 1; break; // 北
-    case 1: ny = y + 1; break; // 南
-    case 2: nx = x - 1; break; // 西
-    case 3: nx = x + 1; break; // 东
+    case 0:
+      ny = y - 1;
+      break; // 北
+    case 1:
+      ny = y + 1;
+      break; // 南
+    case 2:
+      nx = x - 1;
+      break; // 西
+    case 3:
+      nx = x + 1;
+      break; // 东
     }
     if (nx < 0 || nx >= maze->cols || ny < 0 || ny >= maze->rows)
       continue;

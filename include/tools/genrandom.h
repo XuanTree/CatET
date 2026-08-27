@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-
 int genRandomNum(int range);
 
 #endif // CET_GENRANDOM_H
