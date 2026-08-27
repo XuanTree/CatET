@@ -15,6 +15,13 @@
 #define PLATFORM_TIME_LIMIT 40.0f   // 关卡限时 40 秒
 #define PLATFORM_TIME_PENALTY 20.0f // 倒计时归零扣血
 
+// 敌怪战斗回调上下文：记录触发战斗的敌怪下标（多敌怪场景需要知道删除谁），
+// 由每个敌怪的 battleCtx 指向本场景数据中对应的元素。
+typedef struct PlatformBattleCtx {
+  GameScene *scene; // 平台关卡场景（供回调经 self->owner 切换）
+  int enemyIndex;   // 触发战斗的敌怪下标
+} PlatformBattleCtx;
+
 typedef struct PlatformSceneData {
   const GameApp *app;
   Player cat;                   // 玩家
@@ -22,6 +29,7 @@ typedef struct PlatformSceneData {
   Enemy enemies[ENEMY_MAX_NUM]; // 敌怪数组（数量随难度/关卡动态变化）
   int enemyCount;
   int enemyPlatformIndex[ENEMY_MAX_NUM]; // 敌怪所在平台下标（巡逻边界钳制用）
+  PlatformBattleCtx battleCtx[ENEMY_MAX_NUM]; // 每个敌怪的战斗回调上下文
   Vector2 enemySpots[PLATFORM_MAX_ENEMIES];
   Platform firstPlatform;
   Platform platforms[PLATFORM_MAX_NUM];
@@ -33,13 +41,21 @@ typedef struct PlatformSceneData {
   float timeLeft;
   Rectangle source;
   Rectangle enemySource[ENEMY_MAX_NUM]; // 敌怪当前动画帧源矩形
+  bool enemyWasCountdown
+      [ENEMY_MAX_NUM]; // 敌怪上一帧是否定格（检测触碰瞬间播放音效）
 } PlatformSceneData;
 
-// 敌怪触碰定格 1s 后触发：进入战斗场景（战斗场景未实现前占位，不做事）。
-// TODO: BattleSceneCreate 实现后替换为 GameStackPush(self->owner, ...)
+// 敌怪触碰定格 1s 后触发：经转场进入战斗场景（覆盖层），战斗胜利后 Pop 回到
+// 本关卡，并把被击败的敌怪标记为删除（isAlive=false）。
 static void PlatformOnBattle(void *ctx) {
-  GameScene *self = (GameScene *)ctx;
-  (void)self;
+  PlatformBattleCtx *bc = (PlatformBattleCtx *)ctx;
+  GameScene *self = bc->scene;
+  PlatformSceneData *d = (PlatformSceneData *)self->data;
+  Enemy *e = &d->enemies[bc->enemyIndex];
+  GameStackPush(
+      self->owner,
+      TransitionSceneCreate(
+          d->app, BattleSceneCreate(d->app, &d->cat, e, self, d->difficulty)));
 }
 
 // 掉落重生（定义在下方，先声明供 PlatformSceneUpdate 使用）
@@ -50,6 +66,7 @@ static void PlatformSceneEnter(GameScene *self) {
   // 避免内存未初始化导致的问题
   d->cat = (Player){0};
   InitPlayer(&d->cat);
+  d->cat.app = d->app; // 注入音频宿主（受伤/跳跃音效）
 
   // 继承上一关的生命值数据
   if (d->app->playerHealth > 0.f) {
@@ -158,8 +175,10 @@ static void PlatformSceneEnter(GameScene *self) {
         ep->spawnPosition.x + ep->size.x * 0.5f - d->enemies[i].size.x * 0.5f;
     d->enemies[i].position.y =
         ep->spawnPosition.y + ep->surfaceOffset - d->enemies[i].size.y;
+    // 每个敌怪绑定独立的战斗回调上下文（记录触发战斗的敌怪下标）
+    d->battleCtx[i] = (PlatformBattleCtx){self, i};
     d->enemies[i].onBattle = PlatformOnBattle;
-    d->enemies[i].battleCtx = self;
+    d->enemies[i].battleCtx = &d->battleCtx[i];
     d->enemySpots[i] = d->enemies[i].position; // 记录敌人落点
     d->enemySource[i] =
         AnimationUpdate(&d->enemies[i].animations[ENEMY_MOVE], 0.f);
@@ -239,12 +258,17 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
                                      d->cat.size.x, d->cat.size.y};
   if (FlagCheckCollision(&d->flag, playerRect)) {
     if (d->level >= MAX_LEVELS) {
-      // 最终通关：记录速通最佳时间，经过渡回到开始菜单
+      // 最终通关：播放最终胜利音效，记录速通最佳时间，经过渡回到开始菜单
+      if (d->app->gameFinishSoundValid)
+        PlaySound(d->app->gameFinishSound);
       SpeedrunFinish((GameApp *)d->app);
       GameStackReplace(
           self->owner,
           TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
     } else {
+      // 普通通关：播放通关单关音效（scene_battle 不计入），经过渡进入下一关
+      if (d->app->levelFinishSoundValid)
+        PlaySound(d->app->levelFinishSound);
       GameStackReplace(
           self->owner,
           TransitionSceneCreate(d->app, LevelFlowCreateNextScene(
@@ -260,6 +284,17 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
     if (d->cat.health < 0.f)
       d->cat.health = 0.f;
     d->timeLeft = PLATFORM_TIME_LIMIT;
+  }
+
+  // 触碰敌怪瞬间（isCountdown 上升沿）：播放 meet_the_enemy
+  // 音效（画面定格开始）
+  for (int i = 0; i < d->enemyCount; i++) {
+    Enemy *e = &d->enemies[i];
+    if (e->isAlive && e->isCountdown && !d->enemyWasCountdown[i]) {
+      if (d->app->meetEnemySoundValid)
+        PlaySound(d->app->meetEnemySound);
+    }
+    d->enemyWasCountdown[i] = e->isAlive && e->isCountdown;
   }
 
   // 敌怪定格窗口：任一敌怪定格则冻结画面，仅推进各自战斗计时

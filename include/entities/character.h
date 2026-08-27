@@ -36,6 +36,8 @@ typedef void (*CharacterEvent)(void *ctx);
 
 // 可复用的字母交互 + 拼写检查组件。
 typedef struct Character {
+  const GameApp *app; // 音频宿主引用（由场景注入，用于播放 pick_letter 音效；
+                      // NULL 时静默跳过）
   // 词库与当前谜题
   WordsBank bank;    // 词库（由本组件加载/释放）
   WordEntry entry;   // 当前单词

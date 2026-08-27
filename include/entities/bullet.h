@@ -27,4 +27,24 @@ void UpdateBullet(Bullet *bullet, float dt);
 // 绘制子弹
 void DrawBullet(Bullet *bullet);
 
+// ── 弹幕 pattern（敌怪攻击模板）──────────────────────────────────────────
+// 敌怪每次攻击随机选择一种 pattern，数量也在区间内随机，增加玩法多样性。
+typedef enum BulletPattern {
+  BULLET_PATTERN_AIMED = 0, // 瞄准扇形：向目标方向散射
+  BULLET_PATTERN_RING,      // 环形：以发射点为中心 360° 均匀分布
+  BULLET_PATTERN_RAIN,      // 弹幕雨：宽扇形向下倾泻
+  BULLET_PATTERN_CROSS,     // 十字斜扫：沿对角方向发射
+  BULLET_PATTERN_COUNT,
+} BulletPattern;
+
+// 随机返回一种弹幕 pattern（保证每次攻击有变化）。
+BulletPattern BulletPatternRoll(void);
+
+// 按 pattern 从 origin 生成 count 颗弹幕写入 bullets 数组（每颗独立加载贴图，
+// 复用槽位前会先释放旧贴图），返回实际生成数（count 会被钳制到 maxBullets）。
+// target 供瞄准类 pattern 使用（决定散射中心方向）。
+int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
+                      Vector2 origin, Vector2 target, int count, float speed,
+                      float damage);
+
 #endif // BULLET_H

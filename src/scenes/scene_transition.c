@@ -20,6 +20,8 @@ typedef struct TransitionData {
   const GameApp *app;    // 只读引用，不拥有
   Timer transitionTimer; // 过渡计时器（onEnter 重置，onUpdate 累计）
   GameScene *next;       // 目标场景（所有权已转移，超时 Replace 消费）
+  bool popOnComplete;    // 淡出后 Pop 自身（true）而非
+                         // Replace(next)，覆盖层退出转场用
 } TransitionData;
 
 // 由已过时间 t 计算遮罩不透明度 alpha（0 = 全透，1 = 全黑）：
@@ -50,9 +52,14 @@ static void TransitionUpdate(GameScene *self, float dt) {
   TransitionData *d = (TransitionData *)self->data;
   UpdateTimer(&d->transitionTimer);
 
-  // 计时达到阈值后自动 Replace 到目标场景。
+  // 计时达到阈值后自动切换：默认 Replace 到目标场景；popOnComplete 模式下
+  // Pop 自身露出下层场景（覆盖层场景退出转场用）。
   // 延迟请求由 GameStackUpdate 帧首统一 flush，回调内调用是安全的。
   if (GetElapsedTime(&d->transitionTimer) >= TRANSITION_SECONDS) {
+    if (d->popOnComplete) {
+      GameStackPop(self->owner);
+      return;
+    }
     // 注意：所有权此刻转移给栈（GameStackReplace 入队的场景由帧首消费），
     // 必须先把 d->next 置 NULL，否则本场景 onExit 会误判 next 未消费而
     // 双重释放（栈持有一份 + onExit 又 free 一份 → 切换后崩溃）。
@@ -103,6 +110,35 @@ GameScene *TransitionSceneCreate(const GameApp *app, GameScene *next) {
 
   data->app = app;
   data->next = next; // 转移目标场景所有权给本场景
+
+  scene->name = "TransitionScene";
+  scene->data = data;
+  scene->flags = GAME_SCENE_NONE; // 全屏不透明过渡，不依赖下层绘制
+  scene->pauseable = false;       // 过场不允许调出暂停画面
+  scene->onEnter = TransitionEnter;
+  scene->onUpdate = TransitionUpdate;
+  scene->onDraw = TransitionDraw;
+  scene->onExit = TransitionExit;
+  // onPause / onResume 本场景不需要，保持 NULL
+  return scene;
+}
+
+// 创建「淡出后 Pop」过渡场景：动画结束后 Pop 自身，露出下层场景。
+// 用于覆盖层场景（如战斗场景）退出转场：先 Replace 覆盖层为转场，
+// 淡出结束后 Pop 露出下层关卡场景（next 保持 NULL，onExit 不释放任何东西）。
+GameScene *TransitionSceneCreatePop(const GameApp *app) {
+  GameScene *scene = (GameScene *)calloc(1, sizeof(GameScene));
+  if (scene == NULL) {
+    return NULL;
+  }
+  TransitionData *data = (TransitionData *)calloc(1, sizeof(TransitionData));
+  if (data == NULL) {
+    free(scene);
+    return NULL;
+  }
+
+  data->app = app;
+  data->popOnComplete = true; // 淡出结束后 Pop 自身
 
   scene->name = "TransitionScene";
   scene->data = data;

@@ -69,6 +69,9 @@ void UpdatePlayer(Player *player, float dt) {
     player->hitTimer = HIT_DURATION;
     player->velocity.y = HIT_KNOCKBACK_UP;
     player->isOnTheGround = false;
+    // 受伤音效（cat_hit.ogg）：生命值下降瞬间播放一次
+    if (player->app && player->app->catHitSoundValid)
+      PlaySound(player->app->catHitSound);
   }
   player->lastHealth = player->health;
 
@@ -78,6 +81,9 @@ void UpdatePlayer(Player *player, float dt) {
     player->velocity.y = JUMP_SPEED;
     player->isOnTheGround = false;
     InitTimer(&player->jumpHoldTimer); // 记录起跳时刻
+    // 跳跃音效（cat_jump.ogg）：每次起跳瞬间播放一次
+    if (player->app && player->app->catJumpSoundValid)
+      PlaySound(player->app->catJumpSound);
   }
 
   // 按住期间：持续累加蓄力时间，并在上升阶段持续提供向上力

@@ -22,14 +22,15 @@
 #include "core/gamestack.h"
 
 // ─── tools：工具层（hud 依赖 core/gameapp）───────────────────────────────
+#include "extern/raygui.h"
 #include "tools/animation.h"
 #include "tools/camera.h"
 #include "tools/genrandom.h"
 #include "tools/hud.h"
 #include "tools/menu.h"
-#include "tools/raygui.h"
 #include "tools/strings.h"
 #include "tools/timer.h"
+
 
 // ─── systems：跨场景系统层（仅依赖 core）─────────────────────────────────
 #include "systems/dialogue.h"

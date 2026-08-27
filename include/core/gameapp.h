@@ -29,6 +29,26 @@ typedef struct GameApp {
   Image icon;            // 窗口图标（保留以便最后卸载）
   Sound uiSound;         // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
   bool uiSoundValid; // 是否成功加载 UI 音效（无效时静默跳过播放，避免空操作）
+  Sound
+      meetEnemySound; // 触碰敌怪/进入战斗音效（assets/sounds/meet_the_enemy.ogg）
+  bool meetEnemySoundValid; // 是否成功加载（无效时静默跳过播放）
+
+  // ── 关卡/事件音效（assets/sounds/*.ogg）──────────────────────────
+  Sound battleWinSound;      // 战斗胜利音效（battle_win.ogg）
+  bool battleWinSoundValid;  // 是否成功加载（无效时静默跳过播放）
+  Sound catHitSound;         // 玩家受伤音效（cat_hit.ogg）
+  bool catHitSoundValid;     // 是否成功加载（无效时静默跳过播放）
+  Sound catJumpSound;        // 玩家跳跃音效（cat_jump.ogg）
+  bool catJumpSoundValid;    // 是否成功加载（无效时静默跳过播放）
+  Sound gameFinishSound;     // 最终通关（通关满 100 关）音效（game_finish.ogg）
+  bool gameFinishSoundValid; // 是否成功加载（无效时静默跳过播放）
+  Sound gameOverSound;       // 生命值归零失败音效（game_over.ogg）
+  bool gameOverSoundValid;   // 是否成功加载（无效时静默跳过播放）
+  Sound levelFinishSound;    // 通关单个关卡音效（level_finish.ogg）
+  bool levelFinishSoundValid; // 是否成功加载（无效时静默跳过播放）
+  Sound pickLetterSound;      // 迷宫关卡拾取字母音效（pick_letter.ogg）
+  bool pickLetterSoundValid;  // 是否成功加载（无效时静默跳过播放）
+
   Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
   bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）
 } GameApp;

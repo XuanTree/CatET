@@ -2,6 +2,7 @@
 #define PLAYER_H
 
 #pragma once
+#include "core/gameapp.h"
 #include "tools/animation.h"
 #include "tools/timer.h"
 #include <raylib.h>
@@ -17,6 +18,8 @@ typedef enum PlayerAnimation {
 } PlayerAnimation;
 
 typedef struct Player {
+  const GameApp *app; // 音频宿主引用（由场景在 InitPlayer 后注入，用于播放
+                      // cat_hit/cat_jump 音效；NULL 时静默跳过）
   float health;
   float maxHealth;
   Vector2 position;

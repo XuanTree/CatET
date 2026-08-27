@@ -27,6 +27,9 @@ static void FailEnter(GameScene *self) {
   FailData *d = (FailData *)self->data;
   // 失败：停止隐式全局计时器（不记录数据，仅成功通关才记录）
   SpeedrunStop(d->app);
+  // 失败音效（game_over.ogg）：玩家生命值归 0 进入失败界面时播放
+  if (d->app->gameOverSoundValid)
+    PlaySound(d->app->gameOverSound);
   MenuNavInit(&d->nav, FAIL_ITEM_COUNT);
 }
 

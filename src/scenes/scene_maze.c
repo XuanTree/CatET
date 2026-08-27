@@ -378,6 +378,7 @@ static void MazeEnter(GameScene *self) {
 
   d->cat = (Player){0};
   InitPlayer(&d->cat);
+  d->cat.app = d->app; // 注入音频宿主（受伤/跳跃音效）
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f)
     d->cat.health = d->app->playerHealth;
@@ -386,6 +387,7 @@ static void MazeEnter(GameScene *self) {
   // 初始化字母拼写组件并注入场景回调（落点解析 + 拼写事件）
   d->owner = self->owner;
   CharacterInit(&d->character);
+  d->character.app = d->app; // 注入音频宿主（拾取字母音效）
   d->character.dropResolver = MazeDropResolver;
   d->character.dropCtx = d;
   d->character.onSpellCorrect = MazeOnSpellCorrect;
@@ -553,12 +555,18 @@ static Vector2 MazeDropResolver(void *ctx, const Player *p) {
 static void MazeOnSpellCorrect(void *ctx) {
   MazeData *d = (MazeData *)ctx;
   if (d->level >= MAX_LEVELS) {
+    // 最终通关：播放最终胜利音效，记录速通最佳时间并回到开始菜单
+    if (d->app->gameFinishSoundValid)
+      PlaySound(d->app->gameFinishSound);
     SpeedrunFinish((GameApp *)d->app);
     GameStackReplace(
         d->owner,
         TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
     return;
   }
+  // 普通通关：播放通关单关音效（scene_battle 不计入），经过渡进入下一关
+  if (d->app->levelFinishSoundValid)
+    PlaySound(d->app->levelFinishSound);
   GameStackReplace(d->owner, TransitionSceneCreate(
                                  d->app, LevelFlowCreateNextScene(
                                              d->app, d->level, d->difficulty)));
@@ -617,6 +625,9 @@ static void DrawHud(MazeData *d) {
   const int screenH = d->app->logicHeight;
   const float margin = 12.0f;
   const int fontSize = 16;
+
+  // 左上角：当前关卡编号（与其他关卡 HUD 保持一致）
+  HudDrawLevel(d->app, d->level);
 
   float topY = margin;
   const int hintSize = 28;

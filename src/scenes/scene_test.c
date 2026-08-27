@@ -24,6 +24,7 @@ typedef struct TestData {
   int difficulty;        // 难度（0/1/2，传递给后续关卡）
   float timeLeft;        // 关卡限时倒计时（秒，玩法一由本场景暂代限时 40s）
   Rectangle source;      // 当前动画帧源矩形
+  bool enemyWasCountdown; // 敌怪上一帧是否处于定格窗口（检测触碰瞬间播放音效）
 } TestData;
 
 // 玩家掉出屏幕外此距离后触发传送回最近的着陆表面
@@ -93,15 +94,15 @@ static void RespawnIfFallen(TestData *d, Player *player) {
     player->health = 0.0f;
 }
 
-// 敌怪触碰定格 1s 后触发：进入战斗场景。
-// 占位：战斗场景未实现，此处不做任何事——玩家碰到敌怪不扣血（触碰不产生
-// 伤害），平台场景原有血量机制（掉落扣血等）保持不变。
-// TODO: BattleSceneCreate 实现后替换为：
-//   GameStackPush(self->owner, BattleSceneCreate(d->app, &d->cat, &d->enemy,
-//   self));
+// 敌怪触碰定格 1s 后触发：经转场进入战斗场景（覆盖层），战斗胜利后 Pop 回到
+// 本关卡，并把被击败的敌怪标记为删除（isAlive=false）。
 static void TestOnBattle(void *ctx) {
   GameScene *self = (GameScene *)ctx;
-  (void)self;
+  TestData *d = (TestData *)self->data;
+  GameStackPush(self->owner,
+                TransitionSceneCreate(
+                    d->app, BattleSceneCreate(d->app, &d->cat, &d->enemy, self,
+                                              d->difficulty)));
 }
 
 static void TestEnter(GameScene *self) {
@@ -110,6 +111,7 @@ static void TestEnter(GameScene *self) {
   // 否则 platformTexture.id 等字段可能残留垃圾值
   d->cat = (Player){0};
   InitPlayer(&d->cat);
+  d->cat.app = d->app; // 注入音频宿主（受伤/跳跃音效）
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f) {
     d->cat.health = d->app->playerHealth;
@@ -156,12 +158,18 @@ static void TestUpdate(GameScene *self, float dt) {
   // 触碰终点小红旗 → 通关：经过渡场景进入下一关（类型按权重刷新）
   if (FlagCheckCollision(&d->flag, PlayerRect(&d->cat))) {
     if (d->level >= MAX_LEVELS) {
-      // 最终通关（第 MAX_LEVELS 关）：记录速通最佳时间，经过渡回到开始菜单
+      // 最终通关（第 MAX_LEVELS 关）：播放最终胜利音效，记录速通最佳时间，
+      // 经过渡回到开始菜单
+      if (d->app->gameFinishSoundValid)
+        PlaySound(d->app->gameFinishSound);
       SpeedrunFinish((GameApp *)d->app);
       GameStackReplace(
           self->owner,
           TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
     } else {
+      // 普通通关：播放通关单关音效（scene_battle 不计入），经过渡进入下一关
+      if (d->app->levelFinishSoundValid)
+        PlaySound(d->app->levelFinishSound);
       GameStackReplace(
           self->owner,
           TransitionSceneCreate(d->app, LevelFlowCreateNextScene(
@@ -178,6 +186,14 @@ static void TestUpdate(GameScene *self, float dt) {
       d->cat.health = 0.0f;
     d->timeLeft = TEST_TIME_LIMIT;
   }
+
+  // 触碰敌怪瞬间（isCountdown 上升沿）：播放 meet_the_enemy
+  // 音效（画面定格开始）
+  if (d->enemy.isAlive && d->enemy.isCountdown && !d->enemyWasCountdown) {
+    if (d->app->meetEnemySoundValid)
+      PlaySound(d->app->meetEnemySound);
+  }
+  d->enemyWasCountdown = d->enemy.isAlive && d->enemy.isCountdown;
 
   // 触碰提醒窗口：画面定格（玩家与整个世界不更新，玩家不可移动），
   // 仅推进敌怪战斗延迟计时；满 1s 后 ePlayerCollision 触发 onBattle。

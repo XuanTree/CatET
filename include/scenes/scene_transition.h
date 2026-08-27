@@ -21,4 +21,10 @@
 //                TransitionSceneCreate(app, StartSceneCreate(app)));
 GameScene *TransitionSceneCreate(const GameApp *app, GameScene *next);
 
+// 创建「淡出后 Pop」过渡场景：显示「淡入-保持-淡出」黑色遮罩动画后，Pop
+// 自身并露出下层场景。用于覆盖层场景（如战斗场景）退出时的转场：
+//   战斗胜利 → GameStackReplace(owner, TransitionSceneCreatePop(app))
+//   先以转场覆盖层替换战斗场景，淡出结束后 Pop 露出下层平台关卡。
+GameScene *TransitionSceneCreatePop(const GameApp *app);
+
 #endif // SCENE_TRANSITION_H

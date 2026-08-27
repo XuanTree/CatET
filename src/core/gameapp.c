@@ -190,6 +190,35 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
       TextFormat("%sassets/sounds/ui_sound.ogg", GetApplicationDirectory()));
   app.uiSoundValid = IsSoundValid(app.uiSound);
 
+  // 触碰敌怪/进入战斗音效：加载失败时置 meetEnemySoundValid=false，静默跳过。
+  app.meetEnemySound = LoadSound(TextFormat(
+      "%sassets/sounds/meet_the_enemy.ogg", GetApplicationDirectory()));
+  app.meetEnemySoundValid = IsSoundValid(app.meetEnemySound);
+
+  // ── 新增一批关卡/事件音效（加载失败时置对应 valid=false，播放前据此静默
+  //    跳过；与 uiSound / meetEnemySound 的既有处理方式一致）───────────────
+  app.battleWinSound = LoadSound(
+      TextFormat("%sassets/sounds/battle_win.ogg", GetApplicationDirectory()));
+  app.battleWinSoundValid = IsSoundValid(app.battleWinSound);
+  app.catHitSound = LoadSound(
+      TextFormat("%sassets/sounds/cat_hit.ogg", GetApplicationDirectory()));
+  app.catHitSoundValid = IsSoundValid(app.catHitSound);
+  app.catJumpSound = LoadSound(
+      TextFormat("%sassets/sounds/cat_jump.ogg", GetApplicationDirectory()));
+  app.catJumpSoundValid = IsSoundValid(app.catJumpSound);
+  app.gameFinishSound = LoadSound(
+      TextFormat("%sassets/sounds/game_finish.ogg", GetApplicationDirectory()));
+  app.gameFinishSoundValid = IsSoundValid(app.gameFinishSound);
+  app.gameOverSound = LoadSound(
+      TextFormat("%sassets/sounds/game_over.ogg", GetApplicationDirectory()));
+  app.gameOverSoundValid = IsSoundValid(app.gameOverSound);
+  app.levelFinishSound = LoadSound(TextFormat(
+      "%sassets/sounds/level_finish.ogg", GetApplicationDirectory()));
+  app.levelFinishSoundValid = IsSoundValid(app.levelFinishSound);
+  app.pickLetterSound = LoadSound(
+      TextFormat("%sassets/sounds/pick_letter.ogg", GetApplicationDirectory()));
+  app.pickLetterSoundValid = IsSoundValid(app.pickLetterSound);
+
   // 全局 UI 字体：用 LoadFontEx 生成包含词库中文码点的像素字图集，
   // 供界面与中文释义共用；失败降级到默认字体。像素字体用点采样保持锐利。
   int cpCount = 0;
@@ -360,6 +389,15 @@ void GameAppClose(GameApp *app) {
   UnloadRenderTexture(app->target);
   UnloadImage(app->icon);
   UnloadSound(app->uiSound);
+  UnloadSound(app->meetEnemySound);
+  // 卸载新增的关卡/事件音效（无效句柄由 raylib 内部安全跳过）
+  UnloadSound(app->battleWinSound);
+  UnloadSound(app->catHitSound);
+  UnloadSound(app->catJumpSound);
+  UnloadSound(app->gameFinishSound);
+  UnloadSound(app->gameOverSound);
+  UnloadSound(app->levelFinishSound);
+  UnloadSound(app->pickLetterSound);
   // 仅卸载真正加载的自定义字体（降级用的默认字体归 raylib 内部管理）
   if (app->uiFontLoaded) {
     UnloadFont(app->uiFont);

@@ -8,16 +8,17 @@
 #include "entities/flag.h"
 #include "entities/platform.h"
 #include "entities/player.h"
+#include "extern/raygui.h"
 #include "raylib.h"
 #include "scenes/scene_fail.h"
 #include "scenes/scene_transition.h"
 #include "systems/level_flow.h"
 #include "tools/camera.h"
-#include "tools/raygui.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 
 // 创建「平台跳跃」关卡场景（docs/game_instructions.md 关卡设计 3，核心玩法）：
 // 玩家在平台与地面上跳跃前进，触碰终点小红旗即通关，进入下一关。

@@ -4,7 +4,7 @@
 #pragma once
 #include "core/gameapp.h"
 #include "core/gamestack.h"
-#include "tools/raygui.h"
+#include "extern/raygui.h"
 #include <raylib.h>
 
 // 创建开始菜单场景：标题 + 开始/设置/退出按钮。
