@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2026 XuanTree
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
 #ifndef CHARACTER_H
 #define CHARACTER_H
 
@@ -17,6 +26,8 @@
 
 // 场景私有字母数组上限（正确字母 1 + 干扰字母）
 #define CHARACTER_MAX_LETTERS 8
+// 单词挖空数量上限（单词长度 3~12，此值足够容纳全部挖空下标）
+#define CHARACTER_MAX_BLANKS 16
 
 // 字母实体：被挖掉的正确字母或干扰字母。
 typedef struct CharLetter {
@@ -39,11 +50,12 @@ typedef struct Character {
   const GameApp *app; // 音频宿主引用（由场景注入，用于播放 pick_letter 音效；
                       // NULL 时静默跳过）
   // 词库与当前谜题
-  WordsBank bank;    // 词库（由本组件加载/释放）
-  WordEntry entry;   // 当前单词
-  char revealed[64]; // 挖空后的单词显示（'_' 表示空位）
-  int blankIndex;    // 被挖空的字母在单词中的下标
-  char answerChar;   // 正确字母
+  WordsBank bank;                       // 词库（由本组件加载/释放）
+  WordEntry entry;                      // 当前单词
+  char revealed[64];                    // 挖空后的单词显示（'_' 表示空位）
+  int blankCount;                       // 挖空数量（1..单词长度，默认 1）
+  int blankIndex[CHARACTER_MAX_BLANKS]; // 被挖空的字母在单词中的下标（升序）
+  char answerChar; // 第一个挖空的正确字母（兼容单挖空场景：迷宫/暴击直接使用）
 
   // 字母实体与持有状态
   CharLetter letters[CHARACTER_MAX_LETTERS];
@@ -73,13 +85,24 @@ void CharacterInit(Character *c);
 // 加载词库；成功返回 0，文件打不开返回 -1（见 WordsBankLoad）。
 int CharacterLoadBank(Character *c, const char *path);
 
+// 从内嵌资源加载词库，relPath 形如 "assets/words/CET4.txt"（见
+// tools/resource.h）。
+int CharacterLoadBankEmbedded(Character *c, const char *relPath);
+
 // 释放词库内存。
 void CharacterFreeBank(Character *c);
 
-// 从词库抽取长度合适（3~12）的单词并挖空 1 个字母，生成 revealed / answerChar。
+// 从词库抽取长度合适（3~12）的单词并按 blankCount（默认 1，场景可设为 >1
+// 实现多挖空拼写）挖空多个字母，生成 revealed / blankIndex[] / answerChar。
 // 词库为空或抽不到合适长度时使用兜底单词 "cat"（保证场景仍可运行）。
 // 返回指向 entry.word 的指针（可直接用于 HUD 显示）。
 const char *CharacterSetupPuzzle(Character *c);
+
+// 返回仍未填写的挖空数量（0 表示全部挖空已填满，可通关）。
+int CharacterRemainingBlanks(const Character *c);
+
+// 判断字符 ch 是否为当前仍待填写的某个挖空字母。
+bool CharacterIsAnswerLetter(const Character *c, char ch);
 
 // 生成 1 个正确字母 + distractorCount 个干扰字母并放置到候选落点。
 //   spots / spotIsDeadEnd 由场景提供：spots 为字母候选落点坐标，

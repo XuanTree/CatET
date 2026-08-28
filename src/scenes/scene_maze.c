@@ -395,20 +395,20 @@ static void MazeEnter(GameScene *self) {
   d->character.eventCtx = d;
 
   // 按难度加载词库（词库加载/谜题生成/字母交互均在 Character 组件内）
-  const char *path;
+  const char *relPath;
   switch (d->difficulty) {
   case 2:
-    path = "%sassets/words/CET6.txt";
+    relPath = "assets/words/CET6.txt";
     break;
   case 1:
-    path = "%sassets/words/CET4.txt";
+    relPath = "assets/words/CET4.txt";
     break; // 普通暂用 CET4
   case 0:
   default:
-    path = "%sassets/words/CET4.txt";
+    relPath = "assets/words/CET4.txt";
     break;
   }
-  CharacterLoadBank(&d->character, TextFormat(path, GetApplicationDirectory()));
+  CharacterLoadBankEmbedded(&d->character, relPath);
 
   // 构建封闭式蚂蚁地穴迷宫（同时确定拼写平台与字母候选落点）
   BuildMazeLayout(d);
@@ -554,6 +554,8 @@ static Vector2 MazeDropResolver(void *ctx, const Player *p) {
 // 通关第 MAX_LEVELS 关判定最终胜利：记录速通最佳时间并回到开始菜单。
 static void MazeOnSpellCorrect(void *ctx) {
   MazeData *d = (MazeData *)ctx;
+  // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
+  PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
   if (d->level >= MAX_LEVELS) {
     // 最终通关：播放最终胜利音效，记录速通最佳时间并回到开始菜单
     if (d->app->gameFinishSoundValid)

@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2026 XuanTree
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
 #ifndef GAME_H
 #define GAME_H
 
@@ -28,9 +37,9 @@
 #include "tools/genrandom.h"
 #include "tools/hud.h"
 #include "tools/menu.h"
+#include "tools/resource.h"
 #include "tools/strings.h"
 #include "tools/timer.h"
-
 
 // ─── systems：跨场景系统层（仅依赖 core）─────────────────────────────────
 #include "systems/dialogue.h"
@@ -51,10 +60,12 @@
 
 // ─── scenes：场景层（依赖以上全部）───────────────────────────────────────
 #include "scenes/scene_battle.h"
+#include "scenes/scene_bossfight.h"
 #include "scenes/scene_fail.h"
 #include "scenes/scene_maze.h"
 #include "scenes/scene_pause.h"
 #include "scenes/scene_platform.h"
+#include "scenes/scene_spell.h"
 #include "scenes/scene_start.h"
 #include "scenes/scene_test.h"
 #include "scenes/scene_transition.h"

@@ -54,10 +54,12 @@ static void AddCodepoint(int **cps, int *count, int *cap, int cp) {
 }
 
 // 解析 UTF-8 文本并收集全部码点（ASCII + 中文等）。
+// 以 size 为界遍历（内嵌资源数据不以 '\0' 结尾），不再依赖文件读取。
 static void CollectCodepointsFromText(int **cps, int *count, int *cap,
-                                      const unsigned char *s) {
-  while (*s != '\0') {
-    unsigned char c = *s;
+                                      const unsigned char *s, size_t size) {
+  size_t i = 0;
+  while (i < size) {
+    unsigned char c = s[i];
     int cp = 0, len = 1;
     if (c < 0x80) {
       cp = c;
@@ -71,73 +73,46 @@ static void CollectCodepointsFromText(int **cps, int *count, int *cap,
       cp = c & 0x07;
       len = 4;
     } else {
-      s++;
+      i++;
+      continue;
+    }
+    if (i + len > size) { // 序列不完整（越界），跳过该字节
+      i++;
       continue;
     }
     bool valid = (len > 1);
-    for (int i = 1; i < len; i++) {
-      if ((s[i] & 0xC0) != 0x80) {
+    for (int k = 1; k < len; k++) {
+      if ((s[i + k] & 0xC0) != 0x80) {
         valid = false;
         break;
       }
-      cp = (cp << 6) | (s[i] & 0x3F);
+      cp = (cp << 6) | (s[i + k] & 0x3F);
     }
     if (!valid) {
-      s++;
+      i++;
       continue;
     }
     AddCodepoint(cps, count, cap, cp);
-    s += len;
+    i += len;
   }
-}
-
-// 整文件读入（避免跨缓冲区截断 UTF-8 序列）；返回 malloc 缓冲，调用方 free。
-static unsigned char *ReadWholeFile(const char *path, size_t *outSize) {
-  *outSize = 0;
-  FILE *fp = fopen(path, "rb");
-  if (!fp)
-    return NULL;
-  fseek(fp, 0, SEEK_END);
-  long sz = ftell(fp);
-  fseek(fp, 0, SEEK_SET);
-  if (sz <= 0) {
-    fclose(fp);
-    return NULL;
-  }
-  unsigned char *buf = (unsigned char *)malloc((size_t)sz + 1);
-  if (!buf) {
-    fclose(fp);
-    return NULL;
-  }
-  size_t rd = fread(buf, 1, (size_t)sz, fp);
-  fclose(fp);
-  buf[rd] = '\0';
-  *outSize = rd;
-  return buf;
 }
 
 // 收集词库全部码点：先补全 UI 必需 ASCII(32-126)，再合并 CET4/CET6 出现字符。
+// 词库改为从内嵌资源读取（不再依赖外置 assets/ 目录）。
 // 返回 malloc 数组（调用方 free），*outCount 记录数量。
-static int *CollectWordBankCodepoints(const char *appDir, int *outCount) {
+static int *CollectWordBankCodepoints(int *outCount) {
   int cap = 0;
   int *cps = NULL;
   *outCount = 0;
   for (int cp = 32; cp <= 126; cp++)
     AddCodepoint(&cps, outCount, &cap, cp);
 
-  const char *names[] = {"CET4.txt", "CET6.txt"};
+  const char *names[] = {"assets/words/CET4.txt", "assets/words/CET6.txt"};
   for (int f = 0; f < 2; f++) {
-    // 拼接路径：String 自动扩容，规避固定缓冲区对 appDir 长度的假设
-    String path = StringCreate(appDir);
-    StringAppend(&path, "assets/words/");
-    StringAppend(&path, names[f]);
     size_t size = 0;
-    unsigned char *data = ReadWholeFile(StringData(&path), &size);
-    StringFree(&path);
-    if (data) {
-      CollectCodepointsFromText(&cps, outCount, &cap, data);
-      free(data);
-    }
+    const unsigned char *data = EmbeddedAssetGet(names[f], &size);
+    if (data && size > 0)
+      CollectCodepointsFromText(&cps, outCount, &cap, data, size);
   }
   return cps;
 }
@@ -168,9 +143,8 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   // 表现为切换瞬间的严重卡顿。关掉后切换立即完成，无动画无卡顿。
   DisableWindowTransitions();
 
-  // 窗口图标
-  Image icon = LoadImage(
-      TextFormat("%sassets/sprites/icon.png", GetApplicationDirectory()));
+  // 窗口图标（从内嵌资源加载）
+  Image icon = LoadEmbeddedImage("assets/sprites/icon.png");
   SetWindowIcon(icon);
   app.icon = icon; // 保留以便最后卸载
 
@@ -185,50 +159,39 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   SetTargetFPS(60);
   InitAudioDevice();
 
-  // UI 音效：加载失败时置 uiSoundValid=false，各场景播放前据此静默跳过。
-  app.uiSound = LoadSound(
-      TextFormat("%sassets/sounds/ui_sound.ogg", GetApplicationDirectory()));
+  // UI 音效：从内嵌资源加载；失败时置 uiSoundValid=false，播放前据此静默跳过。
+  app.uiSound = LoadEmbeddedSound("assets/sounds/ui_sound.ogg");
   app.uiSoundValid = IsSoundValid(app.uiSound);
 
   // 触碰敌怪/进入战斗音效：加载失败时置 meetEnemySoundValid=false，静默跳过。
-  app.meetEnemySound = LoadSound(TextFormat(
-      "%sassets/sounds/meet_the_enemy.ogg", GetApplicationDirectory()));
+  app.meetEnemySound = LoadEmbeddedSound("assets/sounds/meet_the_enemy.ogg");
   app.meetEnemySoundValid = IsSoundValid(app.meetEnemySound);
 
   // ── 新增一批关卡/事件音效（加载失败时置对应 valid=false，播放前据此静默
   //    跳过；与 uiSound / meetEnemySound 的既有处理方式一致）───────────────
-  app.battleWinSound = LoadSound(
-      TextFormat("%sassets/sounds/battle_win.ogg", GetApplicationDirectory()));
+  app.battleWinSound = LoadEmbeddedSound("assets/sounds/battle_win.ogg");
   app.battleWinSoundValid = IsSoundValid(app.battleWinSound);
-  app.catHitSound = LoadSound(
-      TextFormat("%sassets/sounds/cat_hit.ogg", GetApplicationDirectory()));
+  app.catHitSound = LoadEmbeddedSound("assets/sounds/cat_hit.ogg");
   app.catHitSoundValid = IsSoundValid(app.catHitSound);
-  app.catJumpSound = LoadSound(
-      TextFormat("%sassets/sounds/cat_jump.ogg", GetApplicationDirectory()));
+  app.catJumpSound = LoadEmbeddedSound("assets/sounds/cat_jump.ogg");
   app.catJumpSoundValid = IsSoundValid(app.catJumpSound);
-  app.gameFinishSound = LoadSound(
-      TextFormat("%sassets/sounds/game_finish.ogg", GetApplicationDirectory()));
+  app.gameFinishSound = LoadEmbeddedSound("assets/sounds/game_finish.ogg");
   app.gameFinishSoundValid = IsSoundValid(app.gameFinishSound);
-  app.gameOverSound = LoadSound(
-      TextFormat("%sassets/sounds/game_over.ogg", GetApplicationDirectory()));
+  app.gameOverSound = LoadEmbeddedSound("assets/sounds/game_over.ogg");
   app.gameOverSoundValid = IsSoundValid(app.gameOverSound);
-  app.levelFinishSound = LoadSound(TextFormat(
-      "%sassets/sounds/level_finish.ogg", GetApplicationDirectory()));
+  app.levelFinishSound = LoadEmbeddedSound("assets/sounds/level_finish.ogg");
   app.levelFinishSoundValid = IsSoundValid(app.levelFinishSound);
-  app.pickLetterSound = LoadSound(
-      TextFormat("%sassets/sounds/pick_letter.ogg", GetApplicationDirectory()));
+  app.pickLetterSound = LoadEmbeddedSound("assets/sounds/pick_letter.ogg");
   app.pickLetterSoundValid = IsSoundValid(app.pickLetterSound);
 
   // 全局 UI 字体：用 LoadFontEx 生成包含词库中文码点的像素字图集，
   // 供界面与中文释义共用；失败降级到默认字体。像素字体用点采样保持锐利。
   int cpCount = 0;
-  int *codepoints =
-      CollectWordBankCodepoints(GetApplicationDirectory(), &cpCount);
+  int *codepoints = CollectWordBankCodepoints(&cpCount);
   Font uiFont = {0};
   if (codepoints && cpCount > 0) {
-    uiFont = LoadFontEx(
-        TextFormat("%sassets/fonts/pixel_font.ttf", GetApplicationDirectory()),
-        UI_FONT_BASE_SIZE, codepoints, cpCount);
+    uiFont = LoadEmbeddedFontEx("assets/fonts/pixel_font.ttf",
+                                UI_FONT_BASE_SIZE, codepoints, cpCount);
   }
   free(codepoints);
   if (IsFontValid(uiFont) && uiFont.glyphCount > 0) {

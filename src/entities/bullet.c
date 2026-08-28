@@ -18,8 +18,7 @@ void InitBullet(Bullet *bullet, Vector2 position, Vector2 velocity,
   bullet->lifetime = BULLET_MAX_LIFETIME;
   bullet->isActive = true;
   // 每颗子弹独立加载贴图；后续若引入对象池，应改为共享同一纹理
-  bullet->bulletTexture = LoadTexture(
-      TextFormat("%sassets/sprites/bullet.png", GetApplicationDirectory()));
+  bullet->bulletTexture = LoadEmbeddedTexture("assets/sprites/bullet.png");
 }
 
 // 每帧更新：位移、衰减存活时长，超时自动失效
@@ -140,4 +139,9 @@ int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
     break;
   }
   return spawned;
+}
+
+// 弹幕浮动伤害：返回 [3, 9] 的随机伤害值
+float BulletRollDamage(void) {
+  return 3.0f + (float)genRandomNum(7); // 3..9
 }

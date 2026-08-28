@@ -7,13 +7,13 @@ static void LoadPlatformTexture(Platform *platform) {
   const char *path = NULL;
   switch (platform->platformType) {
   case SMALL:
-    path = "%sassets/sprites/platform_1.png";
+    path = "assets/sprites/platform_1.png";
     break;
   case MEDIUM:
-    path = "%sassets/sprites/platform_2.png";
+    path = "assets/sprites/platform_2.png";
     break;
   case LARGE:
-    path = "%sassets/sprites/platform_3.png";
+    path = "assets/sprites/platform_3.png";
     break;
   default:
     return; // 非法类型，保持原状
@@ -24,10 +24,10 @@ static void LoadPlatformTexture(Platform *platform) {
     UnloadTexture(platform->platformTexture);
   }
 
-  // 用独立 Image 扫描顶部透明留白（扫描后立即卸载，不参与纹理生成）。
-  // 纹理沿用 LoadTexture 路径（与玩家精灵一致），避免 LoadTextureFromImage
-  // 在个别 raylib 版本中与 LoadTexture 的垂直朝向不一致（导致平台倒置）。
-  Image scan = LoadImage(TextFormat(path, GetApplicationDirectory()));
+  // 用独立 Image 扫描顶部透明留白（从内嵌资源解码）。
+  // 纹理随后也从同一内存 Image 生成（全局统一内存加载路径，玩家/敌人同源，
+  // 不存在 LoadTexture 与 LoadTextureFromImage 之间的垂直朝向差异）。
+  Image scan = LoadEmbeddedImage(path);
   if (scan.data == NULL) {
     // 加载失败：清空尺寸，DrawPlatform 将画不出内容，碰撞也会跳过
     platform->size = (Vector2){0, 0};
@@ -64,11 +64,10 @@ static void LoadPlatformTexture(Platform *platform) {
   platform->surfaceOffset = surfaceOffset * GAME_SCALE;
   platform->size = (Vector2){(float)scan.width * GAME_SCALE,
                              (float)scan.height * GAME_SCALE};
-  UnloadImage(scan);
 
-  // 纹理加载与原实现一致（与玩家同用 LoadTexture）
-  platform->platformTexture =
-      LoadTexture(TextFormat(path, GetApplicationDirectory()));
+  // 纹理从同一内存 Image 生成（避免额外解码一次），随后卸载 CPU 图像
+  platform->platformTexture = LoadTextureFromImage(scan);
+  UnloadImage(scan);
 }
 
 // 平台唯一初始化入口：设置类型与位置，并加载对应纹理。

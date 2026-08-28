@@ -1,6 +1,5 @@
 # IDE Generated files
 .vscode/
-.idea/
 .cr/
 .vs/
 
@@ -10,23 +9,18 @@
 # cmake build files
 out/
 build/
-.cmake-build-debug/
+
+# package files
+packaging/
+Windows/
+Linux/
+
+# Dos
+docs/
 
 # configure files
 .clangd
-plans/
-.out-of-code-insights/
-clion-build/
 
 # some assets files
-assets/sounds/battle_win.ogg
-assets/sounds/game_finish.ogg
-assets/sounds/ui_sound.ogg
-assets/sounds/meet_the_enemy.ogg
-assets/sounds/level_finish.ogg
-assets/sounds/game_over.ogg
-assets/sounds/level_finish.ogg
-assets/sounds/cat_hit.ogg
-assets/sounds/cat_jump.ogg
-assets/sounds/pick_letter.ogg
-assets/fonts/
+# about fonts, see [https://github.com/TakWolf/fusion-pixel-font]
+assets/fonts/ 

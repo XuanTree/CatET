@@ -8,10 +8,11 @@
 #define PLATFORM_NUM_ENEMIES 6
 #define PLATFORM_MAX_NUM 27
 #define ENEMY_MAX_NUM 15
-#define TOWER_TOP_MARGIN 200.f      // 塔顶预留高度
-#define MAX_RISE_SAFE 190.f         // 安全值,玩家跳不上去那不是完蛋了?
-#define MAX_SIDE_OFFSET 125.f       // 水平偏移数据
-#define MIN_SIDE_OVERLAP 40.f       // 相邻平台水平区间必须重叠的余量;
+#define TOWER_TOP_MARGIN 200.f // 塔顶预留高度
+#define MAX_RISE_SAFE 190.f    // 安全值,玩家跳不上去那不是完蛋了?
+#define MAX_SIDE_OFFSET 170.f  // 水平偏移数据（放宽，强化 Z/S 形走势）
+#define MIN_SIDE_OVERLAP                                                       \
+  20.f // 相邻平台最小水平重叠余量（放宽以增强水平随机性）
 #define PLATFORM_TIME_LIMIT 40.0f   // 关卡限时 40 秒
 #define PLATFORM_TIME_PENALTY 20.0f // 倒计时归零扣血
 
@@ -95,20 +96,35 @@ static void PlatformSceneEnter(GameScene *self) {
       .x = d->platforms[0].spawnPosition.x + d->platforms[0].size.x * 0.5f,
       .y = d->platforms[0].spawnPosition.y + d->platforms[0].surfaceOffset};
 
+  // Z/S 形爬塔：用一个「水平方向 + 持续步数」控制走势。方向先随机，持续
+  // 1~3 步后反向（每步反向=Z 字形；同向连续 2~3 步= S 形弧线），碰到世界
+  // 左右边界立即反向，从而在水平方向形成明显的左右回环，而非笔直向上爬。
+  int direction = (genRandomNum(2) == 0) ? -1 : 1;
+  int stepsInDirection = 0;
+  int maxStepsInDirection = 1 + genRandomNum(2); // 每方向持续 1~3 步
+
   for (int i = 1; i < d->platformCount; i++) {
     float rise = 80.f + genRandomNum((int)(MAX_RISE_SAFE - 80));
     // 上升越高，水平偏移越收紧（保证跳得上去）
     float maxDx =
         MAX_SIDE_OFFSET * (1.f - (rise - 80.f) / (MAX_RISE_SAFE - 80.f));
-    float dx = (genRandomNum(2) ? 1.f : -1.f) * genRandomNum((int)maxDx);
+    // 水平分量取 maxDx 的较大随机比例（0.45~1.0），配合持续方向形成明显的
+    // Z/S 走势（相对原垂直爬塔大幅增强水平方向随机性）
+    float dx =
+        direction * (0.45f + 0.55f * (float)genRandomNum(100) / 100.f) * maxDx;
 
     float cx = prevTop.x + dx;
     float cy = prevTop.y - rise; // 越往上 y 越小
-    // 边界钳制：左右不能出世界
-    if (cx < 60.f)
+    // 边界钳制：左右不能出世界；触界时标记，稍后强制反向（避免贴墙堆积）
+    bool hitBoundary = false;
+    if (cx < 60.f) {
       cx = 60.f + genRandomNum(80);
-    if (cx > worldWidth - 60.f)
+      hitBoundary = true;
+    }
+    if (cx > worldWidth - 60.f) {
       cx = worldWidth - 60.f - genRandomNum(80);
+      hitBoundary = true;
+    }
 
     // 爬塔模式只用小/中平台（Large 太宽，破坏爬塔节奏）
     PlatformType type =
@@ -119,6 +135,8 @@ static void PlatformSceneEnter(GameScene *self) {
         cx - d->platforms[i].size.x * 0.5f; // 中心→左上
     d->platforms[i].spawnPosition.y = cy;
 
+    // 相邻平台保持一定水平重叠，保证跳跃有落脚点（余量已放宽，水平走势
+    // 更明显，但整体仍在跳跃可达范围内）
     float prevL = d->platforms[i - 1].spawnPosition.x;
     float prevR = prevL + d->platforms[i - 1].size.x;
     if (d->platforms[i].spawnPosition.x + d->platforms[i].size.x <
@@ -132,6 +150,14 @@ static void PlatformSceneEnter(GameScene *self) {
         .x = d->platforms[i].spawnPosition.x + d->platforms[i].size.x * 0.5f,
         .y = d->platforms[i].spawnPosition.y + d->platforms[i].surfaceOffset,
     };
+
+    // 持续若干步后反向（Z 字形 / S 形弧线）；触界同样反向
+    stepsInDirection++;
+    if (hitBoundary || stepsInDirection >= maxStepsInDirection) {
+      direction = -direction;
+      stepsInDirection = 0;
+      maxStepsInDirection = 1 + genRandomNum(2);
+    }
   }
 
   // 生成红旗
@@ -257,6 +283,8 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
   Rectangle playerRect = (Rectangle){d->cat.position.x, d->cat.position.y,
                                      d->cat.size.x, d->cat.size.y};
   if (FlagCheckCollision(&d->flag, playerRect)) {
+    // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
+    PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
     if (d->level >= MAX_LEVELS) {
       // 最终通关：播放最终胜利音效，记录速通最佳时间，经过渡回到开始菜单
       if (d->app->gameFinishSoundValid)

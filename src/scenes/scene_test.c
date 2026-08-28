@@ -61,7 +61,10 @@ static void RespawnIfFallen(TestData *d, Player *player) {
       .centerX = 500.0f, // 地面矩形 (0, logicHeight - 50) 宽 1000
       .topY = (float)(d->app->logicHeight - 50),
   };
-  Platform *plats[] = {&d->platform};
+  // 本关有两个可站立平台（platform / platform_m）；数组大小必须与循环次数一致，
+  // 否则循环越界读取 plats[i] 野指针导致崩溃（此前漏掉 platform_m 造成玩家
+  // 掉出平台后崩溃）。
+  Platform *plats[] = {&d->platform, &d->platform_m};
   for (int i = 0; i < 2; i++) {
     if (plats[i]->size.x <= 0.0f || plats[i]->size.y <= 0.0f)
       continue; // 加载失败（尺寸无效）的平台不参与
@@ -157,6 +160,8 @@ static void TestUpdate(GameScene *self, float dt) {
 
   // 触碰终点小红旗 → 通关：经过渡场景进入下一关（类型按权重刷新）
   if (FlagCheckCollision(&d->flag, PlayerRect(&d->cat))) {
+    // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
+    PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
     if (d->level >= MAX_LEVELS) {
       // 最终通关（第 MAX_LEVELS 关）：播放最终胜利音效，记录速通最佳时间，
       // 经过渡回到开始菜单

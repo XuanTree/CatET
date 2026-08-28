@@ -26,20 +26,24 @@
   2 // 弹幕数量随机增量（在 [lo, lo+extra] 内随机）
 #define BATTLE_BULLET_SPEED 230.f      // 弹幕飞行速度（世界坐标/秒）
 #define BATTLE_WRONG_PENALTY_BASE 20.f // 基础拼写错误惩罚（×1.5^难度）
-#define BATTLE_BULLET_DAMAGE_BASE 10.f // 基础弹幕伤害（×2^难度）
 #define BATTLE_GRAVITY 980.f  // 与 player.c GRAVITY 一致（回合内仅下落用）
 #define BATTLE_GROUND_H 50    // 地面高度（与各关卡一致，顶面 y=480-50）
 #define BATTLE_ENEMY_TOP 20.f // 敌怪固定于屏幕最上方
 #define BATTLE_SMALL_Y1 215   // 两个小平台固定高度（x 随机）
 #define BATTLE_SMALL_Y2 335   // 两个小平台固定高度（x 随机）
 #define BATTLE_PLAT_MARGIN 40 // 平台距屏幕边缘的最小间距
-#define BATTLE_TOTAL_ROUNDS 3 // 战斗总回合数（不论选对次数，满 3 回合胜利）
+// 战斗总回合数随机（小怪提问单词数 1~4，docs：拼写正确一定数量后进入下一关）
+#define BATTLE_ROUNDS_MIN 1   // 提问单词数下限
+#define BATTLE_ROUNDS_MAX 4   // 提问单词数上限
 #define BATTLE_WIN_DELAY 0.8f // 胜利后画面停顿时长（预留胜利音效播放窗口）
 // 敌怪说话机制（dialogue 系统，见 dialogue.h）：
 #define BATTLE_DIALOGUE_CHAR_TIME 0.04f // 逐字输出的每字间隔（秒，较快吐字）
 #define BATTLE_DIALOGUE_MAX_TIME                                               \
-  1.6f // 对话框最长存在时长（秒，含逐字+保持，X 可跳过）
+  2.5f // 对话框最长存在时长（秒，含逐字+保持，X 可跳过）
 #define BATTLE_ATTACK_DELAY 0.45f // 每波攻击前的停顿时长（秒）
+// 无敌时间：玩家被弹幕命中后获得的免伤窗口（秒），期间弹幕穿身而过，
+// 绘制时用闪烁表现（见 BattleDraw）。
+#define BATTLE_INVINCIBLE_TIME 1.5f
 // 敌怪每回合多波次攻击：
 #define BATTLE_WAVES_BASE 2   // 每回合最少攻击波次
 #define BATTLE_WAVES_RANDOM 2 // 波次随机增量（[0, BATTLE_WAVES_RANDOM)）
@@ -105,14 +109,15 @@ typedef struct BattleSceneData {
   int answerIndex;      // 正确单词在 options 中的下标
   int selectIndex;      // 玩家当前选中的选项下标
 
-  // 按难度预计算的伤害/惩罚（避免逐帧 powf）
+  // 按难度预计算的伤害/惩罚（避免逐帧 powf）；弹幕为浮动伤害 3~9，
+  // 在 FireVolley 发射后逐颗随机，不再按难度预计算
   float wrongPenalty;
-  float bulletDamage;
 
   // 战斗状态
   BattlePhase phase;
   BattleResult lastResult; // 上回合选词结果（敌怪回合期间显示反馈）
-  int roundsLeft;          // 剩余回合数（满 BATTLE_TOTAL_ROUNDS 回合即胜利）
+  int totalRounds;         // 本场战斗总回合数（随机 1~4，见 BattleEnter）
+  int roundsLeft;          // 剩余回合数（归零即胜利）
   float winTimer;          // 胜利停顿倒计时（BATTLE_WIN_DELAY，音效无效时兜底）
   bool winSoundPlayed;     // 胜利音效是否已播放（防止重复触发）
   bool transitionRequested; // 已请求 Pop/Replace，防止同帧重复切换
@@ -193,10 +198,13 @@ static void FireVolley(BattleSceneData *d) {
                     enemy->position.y + enemy->size.y * 0.5f};
   Vector2 target = {player->position.x + player->size.x * 0.5f,
                     player->position.y + player->size.y * 0.5f};
-  // 随机 pattern 写入弹幕数组，返回实际生成数
-  d->bulletCount = BulletPatternFire(d->bullets, BATTLE_MAX_BULLETS,
-                                     BulletPatternRoll(), origin, target, count,
-                                     BATTLE_BULLET_SPEED, d->bulletDamage);
+  // 随机 pattern 写入弹幕数组，返回实际生成数（伤害先传 0，随后逐颗随机）
+  d->bulletCount =
+      BulletPatternFire(d->bullets, BATTLE_MAX_BULLETS, BulletPatternRoll(),
+                        origin, target, count, BATTLE_BULLET_SPEED, 0.f);
+  // 浮动伤害：每颗弹幕随机 3~9 点伤害（docs 难度弹幕 +100% 改为固定浮动区间）
+  for (int i = 0; i < d->bulletCount; i++)
+    d->bullets[i].damage = BulletRollDamage();
 }
 
 // 进入敌怪回合：敌怪先说话（逐字输出，X 可跳过），完整显示 2s 后停顿 0.45s，
@@ -223,6 +231,22 @@ static void StartEnemyTurn(BattleSceneData *d) {
 static void StartPlayerTurn(BattleSceneData *d) {
   d->phase = BATTLE_PHASE_PLAYER_TURN;
   SetupChoices(d);
+}
+
+// 对玩家造成一次伤害：扣血、钳制下限、同步受伤检测基准并播放受伤音效。
+// 同步 lastHealth 是关键——选词/弹幕直接扣血后若不同步，下一帧
+// UpdatePlayer 的「生命值下降检测」会再次触发击退与受伤音效（表现为
+// 连续两次受伤，甚至把玩家击退进弹幕流造成第二次伤害）。
+static void BattleDamagePlayer(BattleSceneData *d, float amount) {
+  Player *player = d->player;
+  player->health -= amount;
+  if (player->health < 0.f)
+    player->health = 0.f;
+  player->lastHealth = player->health; // 同步基准，避免 UpdatePlayer 二次触发
+  PlayerTriggerHit(player); // 直接触发 HIT 动画（同步基准后 UpdatePlayer 不会
+                            // 走伤害检测，必须手动触发，否则受伤无 hit 动画）
+  if (d->app->catHitSoundValid)
+    PlaySound(d->app->catHitSound);
 }
 
 // ── 回合更新 ──────────────────────────────────────────────────────────────
@@ -287,14 +311,11 @@ static void UpdatePlayerTurn(BattleSceneData *d, float dt) {
       // 选对：不扣血，仅记录反馈
       d->lastResult = BATTLE_RESULT_CORRECT;
     } else {
-      // 选错：扣除生命值（随难度递增）
-      player->health -= d->wrongPenalty;
-      // 受伤音效（cat_hit.ogg）：选词错误扣血时播放（不走 UpdatePlayer
-      // 的受伤检测，且可能直接进入失败，故在此立即播放）
-      if (d->app->catHitSoundValid)
-        PlaySound(d->app->catHitSound);
+      // 选错：扣除生命值（随难度递增）。统一走 BattleDamagePlayer 扣血并
+      // 同步 lastHealth——避免进入敌怪回合后 UpdatePlayer 检测到血量下降
+      // 触发多余的击退/受伤效果，把玩家弹进弹幕造成第二次伤害。
+      BattleDamagePlayer(d, d->wrongPenalty);
       if (player->health <= 0.f) {
-        player->health = 0.f;
         d->phase = BATTLE_PHASE_LOSE;
         return;
       }
@@ -349,11 +370,10 @@ static void UpdateEnemyDialogue(BattleSceneData *d, float dt) {
   }
 }
 
-// 弹幕躲避阶段：玩家可移动，更新弹幕并检测命中；所有弹幕消失后本回合结束。
-static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
+// 玩家可移动更新：敌怪攻击回合全程通用的玩家物理（说话/停顿/弹幕躲避子阶段
+// 均可用）。含水平移动、平台碰撞、屏幕边界钳制与掉出底部送回地面。
+static void UpdatePlayerMovable(BattleSceneData *d, float dt) {
   Player *player = d->player;
-
-  // 玩家移动（躲避弹幕）
   UpdatePlayer(player, dt);
   player->isOnTheGround = false;
   PlayerCollision(player, &d->platform_s1);
@@ -373,6 +393,14 @@ static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
     player->velocity = (Vector2){0.f, 0.f};
     player->isOnTheGround = true;
   }
+}
+
+// 弹幕躲避阶段：玩家可移动，更新弹幕并检测命中；所有弹幕消失后本回合结束。
+static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
+  Player *player = d->player;
+
+  // 玩家移动（躲避弹幕）
+  UpdatePlayerMovable(d, dt);
 
   // 更新弹幕：位移 + 飞出屏幕失效 + 命中玩家扣血并销毁
   bool anyActive = false;
@@ -394,13 +422,13 @@ static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
                     player->size.y};
     Rectangle br = {b->position.x, b->position.y, b->size.x, b->size.y};
     if (CheckCollisionRecs(pr, br)) {
-      player->health -= b->damage;
-      if (player->health < 0.f)
-        player->health = 0.f;
-      // 受伤音效（cat_hit.ogg）：弹幕命中扣血时播放（若本次扣血导致
-      // 失败会立即切换场景，等不到下一帧 UpdatePlayer 的受伤检测）
-      if (d->app->catHitSoundValid)
-        PlaySound(d->app->catHitSound);
+      // 无敌期间：弹幕穿身而过，不扣血、不销毁（命中后获得短暂免伤窗口，
+      // 避免弹幕雨/环形弹幕在同帧或连续数帧内多次命中造成连续扣血）
+      if (player->invincibleTimer > 0.f)
+        continue;
+      BattleDamagePlayer(d, b->damage);
+      // 命中后给予无敌时间（绘制时用闪烁表现，见 BattleDraw）
+      player->invincibleTimer = BATTLE_INVINCIBLE_TIME;
       b->isActive = false;
       continue;
     }
@@ -432,8 +460,9 @@ static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
   }
 }
 
-// 敌怪回合：说话（逐字 + 2s 保持 + X 跳过）→ 停顿 0.45s → 随机 pattern 发射
-// 弹幕 → 玩家躲避；所有弹幕消失后本回合结束。
+// 敌怪回合：说话（逐字 + 保持 + X 跳过）→ 停顿 0.45s → 随机 pattern 发射
+// 弹幕 → 玩家躲避。整段都是敌怪的攻击回合，玩家始终允许移动走位（可在说话
+// 时预判走位、停顿蓄力时提前站位）；所有弹幕消失后本回合结束。
 static void UpdateEnemyTurn(BattleSceneData *d, float dt) {
   Player *player = d->player;
   Enemy *enemy = d->enemy;
@@ -441,13 +470,13 @@ static void UpdateEnemyTurn(BattleSceneData *d, float dt) {
   switch (d->enemyStage) {
   case ENEMY_TALK_TYPING:
   case ENEMY_TALK_HOLD:
-    // 说话阶段：玩家不可移动，逐字显示台词；X 可跳过
-    UpdatePlayerFrozen(d, dt);
+    // 说话阶段：玩家全程可移动，逐字显示台词；X 可跳过
+    UpdatePlayerMovable(d, dt);
     UpdateEnemyDialogue(d, dt);
     break;
   case ENEMY_ATTACK_WINDUP:
-    // 停顿 0.45s：玩家不可移动，随后发射本波弹幕
-    UpdatePlayerFrozen(d, dt);
+    // 停顿 0.45s：玩家仍可移动走位（为躲避本波弹幕预判站位），随后发射弹幕
+    UpdatePlayerMovable(d, dt);
     d->stageTimer -= dt;
     if (d->stageTimer <= 0.f) {
       FireVolley(d); // 随机 pattern + 随机数量
@@ -498,6 +527,7 @@ static void BattleEnter(GameScene *self) {
   player->playerAnimationState = IDLE;
   // 同步受伤检测基准，避免进场误触发受伤动画
   player->lastHealth = player->health;
+  player->invincibleTimer = 0.f; // 进场清除无敌状态（不应从平台关卡带入）
 
   // 锁定镜头：禁用相机，战斗在固定逻辑屏幕坐标进行
   InitSceneCamera(&d->camera, screenW, screenH, false, CAMERA_FOLLOW_NONE);
@@ -519,21 +549,24 @@ static void BattleEnter(GameScene *self) {
   d->platform_s2.spawnPosition.x =
       (float)(BATTLE_PLAT_MARGIN + genRandomNum(range2));
 
-  // 按难度加载词库（与其它关卡一致：简单/普通 CET4，困难 CET6）
-  const char *path = "%sassets/words/CET4.txt";
+  // 按难度加载词库（与其它关卡一致：简单/普通 CET4，困难 CET6；从内嵌资源）
+  const char *relPath = "assets/words/CET4.txt";
   if (d->difficulty >= 2)
-    path = "%sassets/words/CET6.txt";
-  WordsBankLoad(&d->bank, TextFormat(path, GetApplicationDirectory()));
+    relPath = "assets/words/CET6.txt";
+  WordsBankLoadEmbedded(&d->bank, relPath);
 
-  // 难度影响：拼写错误惩罚 ×1.5^d、弹幕伤害 ×2^d（docs 玩法说明）
+  // 难度影响：拼写错误惩罚 ×1.5^d（docs 玩法说明）；弹幕为浮动伤害 3~9，
+  // 在 FireVolley 发射时逐颗随机，不随难度缩放
   d->wrongPenalty =
       BATTLE_WRONG_PENALTY_BASE * powf(1.5f, (float)d->difficulty);
-  d->bulletDamage = BATTLE_BULLET_DAMAGE_BASE * powf(2.f, (float)d->difficulty);
 
   // 初始化战斗状态：从玩家回合开始（共 BATTLE_TOTAL_ROUNDS 个回合）
   d->phase = BATTLE_PHASE_PLAYER_TURN;
   d->lastResult = BATTLE_RESULT_NONE;
-  d->roundsLeft = BATTLE_TOTAL_ROUNDS;
+  // 本场战斗随机提问单词数（小怪强弱不一：1~4 个）
+  d->totalRounds = BATTLE_ROUNDS_MIN +
+                   genRandomNum(BATTLE_ROUNDS_MAX - BATTLE_ROUNDS_MIN + 1);
+  d->roundsLeft = d->totalRounds;
   d->winTimer = BATTLE_WIN_DELAY;
   d->winSoundPlayed = false;
   d->transitionRequested = false;
@@ -554,6 +587,13 @@ static void BattleEnter(GameScene *self) {
 
 static void BattleUpdate(GameScene *self, float dt) {
   BattleSceneData *d = (BattleSceneData *)self->data;
+
+  // 无敌时间递减（弹幕命中后给予的免伤窗口，归零后恢复正常受击）
+  if (d->player->invincibleTimer > 0.f) {
+    d->player->invincibleTimer -= dt;
+    if (d->player->invincibleTimer < 0.f)
+      d->player->invincibleTimer = 0.f;
+  }
 
   switch (d->phase) {
   case BATTLE_PHASE_PLAYER_TURN:
@@ -620,7 +660,7 @@ static void DrawBattleHud(BattleSceneData *d) {
     // 当前回合 / 总回合（不论选对次数，满 BATTLE_TOTAL_ROUNDS 回合胜利）
     char info[64];
     snprintf(info, sizeof(info), "Round %d / %d",
-             BATTLE_TOTAL_ROUNDS - d->roundsLeft + 1, BATTLE_TOTAL_ROUNDS);
+             d->totalRounds - d->roundsLeft + 1, d->totalRounds);
     GameAppDrawText(d->app, info, (int)margin, (int)margin, fontSize, WHITE);
   } else if (d->phase == BATTLE_PHASE_ENEMY_TURN) {
     // 上回合选词结果反馈（选对绿色 / 选错红色）
@@ -741,7 +781,6 @@ static void BattleDraw(GameScene *self) {
   // 敌怪：屏幕最上方，无法移动，正常播放动画
   if (d->enemy->isAlive)
     DrawEnemy(d->enemy, d->enemySource);
-
   // 玩家：最下方
   DrawPlayer(d->player, d->playerSource);
 

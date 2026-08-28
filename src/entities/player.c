@@ -29,28 +29,23 @@ void InitPlayer(Player *player) {
   // 资源统一从 exe 同级的 assets/ 目录加载（CMake POST_BUILD 自动复制）
 
   // 初始化 IDLE 动画（8 帧，每帧 0.1 秒，循环播放）
-  player->idleTexture = LoadTexture(
-      TextFormat("%sassets/sprites/cat_idle.png", GetApplicationDirectory()));
+  player->idleTexture = LoadEmbeddedTexture("assets/sprites/cat_idle.png");
   AnimationInit(&player->animations[IDLE], &player->idleTexture, 8, 0.1f, true);
   // 初始化 RUN 动画 （4 帧，每帧 0.1 秒， 循环播放）
-  player->runTexture = LoadTexture(
-      TextFormat("%sassets/sprites/cat_run.png", GetApplicationDirectory()));
+  player->runTexture = LoadEmbeddedTexture("assets/sprites/cat_run.png");
   AnimationInit(&player->animations[WALK], &player->runTexture, 4, 0.1f, true);
   AnimationInit(&player->animations[RUN], &player->runTexture, 4, 0.08f, true);
   // 初始化 jump 动画 （1 帧）
-  player->jumpTexture = LoadTexture(
-      TextFormat("%sassets/sprites/cat_jump.png", GetApplicationDirectory()));
+  player->jumpTexture = LoadEmbeddedTexture("assets/sprites/cat_jump.png");
   AnimationInit(&player->animations[JUMP], &player->jumpTexture, 1, 0.1f,
                 false);
   // 初始化 sleep 动画 （4 帧）
-  player->sleepTexture = LoadTexture(
-      TextFormat("%sassets/sprites/cat_sleep.png", GetApplicationDirectory()));
+  player->sleepTexture = LoadEmbeddedTexture("assets/sprites/cat_sleep.png");
   AnimationInit(&player->animations[SLEEP], &player->sleepTexture, 4, 0.6f,
                 true);
 
   // 初始化 HIT 动画（cat_hit.png 为 16×16×4 帧横排，不循环，总时长 0.8s）
-  player->hitTexture = LoadTexture(
-      TextFormat("%sassets/sprites/cat_hit.png", GetApplicationDirectory()));
+  player->hitTexture = LoadEmbeddedTexture("assets/sprites/cat_hit.png");
   AnimationInit(&player->animations[HIT], &player->hitTexture, 4,
                 HIT_DURATION / 4.f, false);
   player->hitTimer = 0.f;
@@ -238,4 +233,21 @@ void GroundCollision(Player *player) {
     player->position.y = groundTop;
     player->velocity.y = 0.0f;
   }
+}
+
+// 通关奖励：恢复固定生命值（封顶到最大生命值，避免溢出）
+void PlayerHeal(Player *player, float amount) {
+  if (!player || amount <= 0.0f)
+    return;
+  player->health += amount;
+  if (player->health > player->maxHealth)
+    player->health = player->maxHealth;
+}
+
+// 触发玩家受伤动画：强制播放 HIT（时长与 UpdatePlayer 内一致）
+void PlayerTriggerHit(Player *player) {
+  if (!player)
+    return;
+  player->hitTimer = HIT_DURATION;
+  player->playerAnimationState = HIT;
 }

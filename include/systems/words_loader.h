@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2026 XuanTree
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
 #ifndef WORDS_LOADER_H
 #define WORDS_LOADER_H
 
@@ -24,6 +33,14 @@ typedef struct WordsBank {
   int count;
   int capacity;
 } WordsBank;
+
+// 从内存文本解析所有词条（配合内嵌资源；不依赖文件系统）。
+// 成功返回 0；参数非法 / 空数据返回 -1（entries 保持为空）。
+int WordsBankLoadFromMemory(WordsBank *bank, const char *text, size_t size);
+
+// 从内嵌资源加载词库，relPath 形如 "assets/words/CET4.txt"（见
+// tools/resource.h）。
+int WordsBankLoadEmbedded(WordsBank *bank, const char *relPath);
 
 // 从词库文件加载所有词条。成功返回 0；文件打不开返回 -1（entries 保持为空）。
 // realloc 失败时保留已加载部分并中断（降级），已加载数量反映在 count 中。

@@ -21,12 +21,19 @@ void CharacterInit(Character *c) {
   c->heldLetterIndex = -1;
   c->pickupKey = KEY_Z;
   c->pickupRadius = CHARACTER_DEFAULT_PICKUP_RADIUS;
+  c->blankCount = 1; // 默认单挖空；场景可设 >1 实现多挖空拼写
 }
 
 int CharacterLoadBank(Character *c, const char *path) {
   if (!c || !path)
     return -1;
   return WordsBankLoad(&c->bank, path);
+}
+
+int CharacterLoadBankEmbedded(Character *c, const char *relPath) {
+  if (!c || !relPath)
+    return -1;
+  return WordsBankLoadEmbedded(&c->bank, relPath);
 }
 
 void CharacterFreeBank(Character *c) {
@@ -60,20 +67,89 @@ const char *CharacterSetupPuzzle(Character *c) {
     snprintf(c->entry.pos, sizeof(c->entry.pos), "n.");
   }
 
-  // 挖空 1 个字母，生成 revealed（'_' 表示空位）与 answerChar
+  // 按 blankCount 挖空多个字母（默认 1；场景可设 >1）：随机选互不相同的
+  // 下标，升序存入 blankIndex，并据此生成 revealed（'_' 表示空位）。
   size_t len = strlen(c->entry.word);
-  c->blankIndex = genRandomNum((int)len);
-  c->answerChar = c->entry.word[c->blankIndex];
+  int target = c->blankCount;
+  if (target < 1)
+    target = 1;
+  if (target > (int)len)
+    target = (int)len;
+  if (target > CHARACTER_MAX_BLANKS)
+    target = CHARACTER_MAX_BLANKS;
+  c->blankCount = target;
+
+  bool used[CHARACTER_MAX_BLANKS] = {false};
+  int filled = 0;
+  int guard = 0;
+  while (filled < c->blankCount && guard < 500) {
+    guard++;
+    int idx = genRandomNum((int)len);
+    if (used[idx])
+      continue;
+    used[idx] = true;
+    c->blankIndex[filled++] = idx;
+  }
+  // 随机未能集齐（防御）：顺序补足
+  for (int i = 0; i < (int)len && filled < c->blankCount; i++) {
+    if (!used[i])
+      c->blankIndex[filled++] = i;
+  }
+  // 升序排序（revealed 从左到右挖空顺序自然）
+  for (int a = 0; a < c->blankCount; a++)
+    for (int b = a + 1; b < c->blankCount; b++)
+      if (c->blankIndex[b] < c->blankIndex[a]) {
+        int t = c->blankIndex[a];
+        c->blankIndex[a] = c->blankIndex[b];
+        c->blankIndex[b] = t;
+      }
 
   // 用 String 逐字符构建挖空显示（每关开始调用一次，非热路径）
   String revealed = StringCreateEmpty();
   for (size_t i = 0; i < len; i++) {
-    const char ch = (i == (size_t)c->blankIndex) ? '_' : c->entry.word[i];
-    StringAppendChar(&revealed, ch);
+    bool blanked = false;
+    for (int k = 0; k < c->blankCount; k++)
+      if (c->blankIndex[k] == (int)i) {
+        blanked = true;
+        break;
+      }
+    StringAppendChar(&revealed, blanked ? '_' : c->entry.word[i]);
   }
   snprintf(c->revealed, sizeof(c->revealed), "%s", StringData(&revealed));
   StringFree(&revealed);
+
+  // 兼容保留：第一个挖空的字母（迷宫/暴击场景单挖空仍直接使用 answerChar）
+  c->answerChar = c->entry.word[c->blankIndex[0]];
   return c->entry.word;
+}
+
+// 返回仍未填写的挖空数量（0 表示全部挖空已填满）
+int CharacterRemainingBlanks(const Character *c) {
+  if (!c)
+    return 0;
+  int n = 0;
+  for (int i = 0; i < c->blankCount; i++) {
+    int idx = c->blankIndex[i];
+    if (idx >= 0 && idx < 64 && c->revealed[idx] == '_')
+      n++;
+  }
+  return n;
+}
+
+// 判断字符 ch 是否为当前仍待填写的某个挖空字母
+bool CharacterIsAnswerLetter(const Character *c, char ch) {
+  if (!c)
+    return false;
+  for (int i = 0; i < c->blankCount; i++) {
+    int idx = c->blankIndex[i];
+    if (idx < 0 || idx >= 64)
+      continue;
+    if (c->revealed[idx] != '_')
+      continue; // 已填的挖空不再是候选
+    if (c->entry.word[idx] == ch)
+      return true;
+  }
+  return false;
 }
 
 void CharacterPlaceLetters(Character *c, const Vector2 *spots,
@@ -189,8 +265,18 @@ void CharacterUpdate(Character *c, Player *p) {
     return;
   }
 
-  if (held->ch == c->answerChar) {
-    // 拼写正确：复位持有状态，交由场景事件切换下一关
+  if (CharacterIsAnswerLetter(c, held->ch)) {
+    // 拼写正确：填掉一个匹配的挖空并更新 revealed（多挖空逐空填满），
+    // 复位持有状态，交由场景事件决定「继续下一批」或「通关」。
+    for (int i = 0; i < c->blankCount; i++) {
+      int idx = c->blankIndex[i];
+      if (idx < 0 || idx >= 64 || c->revealed[idx] != '_')
+        continue; // 该挖空已填
+      if (c->entry.word[idx] == held->ch) {
+        c->revealed[idx] = held->ch; // 填上字母，HUD 显示逐步补全
+        break;
+      }
+    }
     c->holdingLetter = false;
     c->heldLetterIndex = -1;
     if (c->onSpellCorrect)

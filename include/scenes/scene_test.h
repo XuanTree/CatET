@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2026 XuanTree
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
 #ifndef SCENE_TEST_H
 #define SCENE_TEST_H
 
@@ -18,7 +27,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 
 // 创建「平台跳跃」关卡场景（docs/game_instructions.md 关卡设计 3，核心玩法）：
 // 玩家在平台与地面上跳跃前进，触碰终点小红旗即通关，进入下一关。

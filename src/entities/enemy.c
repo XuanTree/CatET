@@ -44,8 +44,7 @@ void InitEnemy(Enemy *enemy, Vector2 spawn_pos) {
   InitTimer(&enemy->battleTimer);
 
   // 初始化 IDLE 动画（4 帧，每帧 0.1s，循环播放）
-  enemy->idleTexture = LoadTexture(TextFormat(
-      "%sassets/sprites/paper_enemy.png", GetApplicationDirectory()));
+  enemy->idleTexture = LoadEmbeddedTexture("assets/sprites/paper_enemy.png");
   AnimationInit(&enemy->animations[ENEMY_MOVE], &enemy->idleTexture, 4, 0.1f,
                 true);
 

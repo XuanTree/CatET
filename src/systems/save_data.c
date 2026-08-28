@@ -1,7 +1,8 @@
 #include "game.h"
-// 存档相对路径（拼接 GetApplicationDirectory()，与 asset 加载方式一致）。
-// 可执行目录下由 CMake POST_BUILD 复制 assets，故写入此处即持久化到部署目录。
-#define SAVE_PATH_REL "assets/data/save.json"
+// 存档相对路径（拼接 GetApplicationDirectory()）。
+// 资源已全部内嵌进可执行文件（不再部署 assets/ 目录），
+// 存档单独写在可执行文件同级的 save.json，随安装目录持久化。
+#define SAVE_PATH_REL "save.json"
 
 static const char *SavePath(void) {
   return TextFormat("%s%s", GetApplicationDirectory(), SAVE_PATH_REL);

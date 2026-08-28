@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2026 XuanTree
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ */
+
 #ifndef BULLET_H
 #define BULLET_H
 
@@ -46,5 +55,9 @@ BulletPattern BulletPatternRoll(void);
 int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
                       Vector2 origin, Vector2 target, int count, float speed,
                       float damage);
+
+// 弹幕浮动伤害：每颗弹幕命中随机造成 3~9 点伤害（增加战斗随机性，
+// 不随难度缩放；由各场景在发射后逐颗覆写 damage）。
+float BulletRollDamage(void);
 
 #endif // BULLET_H

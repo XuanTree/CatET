@@ -24,8 +24,7 @@ void InitBoss(Boss *boss, Vector2 spawn_pos) {
   boss->size = (Vector2){.x = BOSS_WIDTH, .y = BOSS_HEIGHT};
 
   // boss.png 为 8 帧横排贴图
-  boss->bossTexture = LoadTexture(
-      TextFormat("%sassets/sprites/boss.png", GetApplicationDirectory()));
+  boss->bossTexture = LoadEmbeddedTexture("assets/sprites/boss.png");
   AnimationInit(&boss->animations[BOSS_MOVE], &boss->bossTexture, 8, 0.1f,
                 true);
 
