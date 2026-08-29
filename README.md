@@ -11,7 +11,7 @@ levels, spell the right words, dodge enemy bullet patterns, and push through
 
 The game is still in development, but the core loop is fully playable.
 
-![platform](assets/sprites/cat_run.png) *Player sprite (placeholder banner)*
+![platform](assets/sprites/cat_run.png) *Player sprite*
 
 ---
 
@@ -50,8 +50,7 @@ The game is still in development, but the core loop is fully playable.
 
 ### Level types
 
-- **Classic Platformer** *(~35%)* — jump across platforms and reach the red flag to clear the level. Touch an enemy to enter a battle scene.
-- **Tower Climb** *(~15%, platformer variant)* — climb a procedurally stacked tower of platforms toward the flag at the top.
+- **Classic Platformer** *(~50%)* — jump across platforms and reach the red flag to clear the level. Touch an enemy to enter a battle scene.
 - **Speed Spelling** *(~30%)* — a 40-second timer; catch falling letters and fill the blank of a partially spelled word using the Chinese/part-of-speech hint.
 - **Maze Puzzle** *(~20%)* — a DFS-generated 2D maze (90-second limit); hunt for the correct letters in dead-ends and bring them back to the central spelling area.
 - **Boss Fight** *(every 20th level)* — avoid the boss's bullet patterns while spelling words to deplete its HP; a quick spelling grants a critical (25% instead of 20%). Clearing level 100 means **victory**.
