@@ -37,12 +37,19 @@ void UpdateBullet(Bullet *bullet, float dt);
 void DrawBullet(Bullet *bullet);
 
 // ── 弹幕 pattern（敌怪攻击模板）──────────────────────────────────────────
-// 敌怪每次攻击随机选择一种 pattern，数量也在区间内随机，增加玩法多样性。
+// 敌怪每次攻击随机选择一种 pattern（共 10 种），数量也在区间内随机，增加玩法
+// 多样性。均由「初始速度/位置排布」构成，无需逐帧特殊状态。
 typedef enum BulletPattern {
-  BULLET_PATTERN_AIMED = 0, // 瞄准扇形：向目标方向散射
-  BULLET_PATTERN_RING,      // 环形：以发射点为中心 360° 均匀分布
-  BULLET_PATTERN_RAIN,      // 弹幕雨：宽扇形向下倾泻
-  BULLET_PATTERN_CROSS,     // 十字斜扫：沿对角方向发射
+  BULLET_PATTERN_AIMED = 0,  // 瞄准扇形：窄扇形朝向玩家
+  BULLET_PATTERN_RING,       // 环形：360° 一圈
+  BULLET_PATTERN_RAIN,       // 弹幕雨：向下宽扇形倾泻
+  BULLET_PATTERN_SPIRAL,     // 螺旋：角度随序号递增的螺旋射线
+  BULLET_PATTERN_PINCER,     // 钳形：朝玩家左右两侧各一组扇形夹击
+  BULLET_PATTERN_WALL,       // 弹幕墙：横向一排平行弹幕扫射
+  BULLET_PATTERN_STAR,       // 星形：6 轴放射（每 60°）
+  BULLET_PATTERN_AIMED_WIDE, // 瞄准大扇形：宽角朝向玩家
+  BULLET_PATTERN_TRIPLE_ARC, // 三段弧：朝玩家左/中/右三组齐射
+  BULLET_PATTERN_HAIL,       // 天降：屏幕上方多点竖直下落
   BULLET_PATTERN_COUNT,
 } BulletPattern;
 

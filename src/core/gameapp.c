@@ -27,6 +27,7 @@ long __stdcall DwmSetWindowAttribute(HWND hwnd, DWORD dwAttribute,
                                      const void *pvAttribute,
                                      DWORD cbAttribute);
 #endif
+// 感谢Deepseek在这方面的努力贡献，虽然好像解决的还是不是很好
 #include "game.h"
 
 // ── 全局 UI 字体码点收集 ─────────────────────────────────────────────
@@ -133,8 +134,7 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   InitWindow(logicWidth, logicHeight, title);
   // 禁用 ESC 默认关闭窗口：ESC 交给主循环用于弹出暂停界面
   SetExitKey(0);
-  // 游戏全局隐藏鼠标：开始/暂停/关卡界面均已支持纯键盘操作
-  HideCursor();
+  //HideCursor(); // 取消隐藏鼠标。。。我完全想不出来怎么完全禁用鼠标，就这样子吧
   // 限制最小窗口尺寸，避免被压缩得过小
   SetWindowMinSize(logicWidth, logicHeight);
 
@@ -156,6 +156,10 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   SetTextureFilter(app.target.texture, TEXTURE_FILTER_POINT);
 
   app.isPaused = false;
+  // 音频总开关默认开启；Run() 启动时从 save.json 读取持久化设置覆盖
+  // （见 systems/save_data 与 src/game.c 的 Run）。
+  app.soundEnabled = DEFAULT_SOUND_ENABLED;
+  app.musicEnabled = DEFAULT_MUSIC_ENABLED;
   SetTargetFPS(60);
   InitAudioDevice();
 
@@ -398,4 +402,44 @@ int GameAppMeasureText(const GameApp *app, const char *text, int fontSize) {
   return (int)MeasureTextEx(app->uiFont, text, (float)fontSize,
                             (float)fontSize / 10.0f)
       .x;
+}
+
+// ── 音频总控接口实现（设置界面经此读写音效/音乐总开关）──────────────────
+
+void GameAppSetSoundEnabled(GameApp *app, bool enabled) {
+  if (!app)
+    return;
+  app->soundEnabled = enabled;
+}
+
+bool GameAppIsSoundEnabled(const GameApp *app) {
+  return app && app->soundEnabled;
+}
+
+void GameAppSetMusicEnabled(GameApp *app, bool enabled) {
+  if (!app)
+    return;
+  app->musicEnabled = enabled;
+}
+
+bool GameAppIsMusicEnabled(const GameApp *app) {
+  return app && app->musicEnabled;
+}
+
+// 统一音效播放入口：总开关关闭或音效无效时静默跳过。
+// 为什么集中在这里：开关判断只有一处，未来加音量/其他全局音频策略时
+// 不用再逐个改播放点（调用方只关心“该不该播”，不关心具体策略）。
+void GameAppPlaySound(const GameApp *app, Sound sound, bool soundValid) {
+  if (!app || !app->soundEnabled || !soundValid)
+    return;
+  PlaySound(sound);
+}
+
+// 统一音乐播放入口（预留）：音乐总开关关闭时静默跳过。
+// 当前无音乐资源，接入 BGM 后播放前先经此接口启动流；停止/循环/音量等
+// 后续控制仍由持有 Music 的一方直接调用 raylib API。
+void GameAppPlayMusic(const GameApp *app, Music music) {
+  if (!app || !app->musicEnabled)
+    return;
+  PlayMusicStream(music);
 }

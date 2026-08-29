@@ -55,7 +55,10 @@ typedef struct Player {
 void InitPlayer(Player *player);
 void UpdatePlayer(Player *player, float dt);
 void DrawPlayer(Player *player, Rectangle source);
-void GroundCollision(Player *player);
+// 纯矩形地面碰撞：groundWidth 为地面宽度（调用场景须传入与自身绘制一致的
+// 宽度，例如平台关卡传 logicWidth、测试关卡传
+// 1000，避免碰撞面与可视地面错位）。
+void GroundCollision(Player *player, float groundWidth);
 
 // 通关奖励：恢复固定生命值（封顶到最大生命值，避免溢出）。
 void PlayerHeal(Player *player, float amount);

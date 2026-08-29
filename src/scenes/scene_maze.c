@@ -19,7 +19,7 @@
 // 感谢Deepseek对于迷宫生成算法的贡献
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define MAZE_TIME_LIMIT 90.0f // 迷宫关卡限时 1 分 30 秒（右下角 HUD 倒计时）
+#define MAZE_TIME_LIMIT 60.0f // Update: 迷宫关卡限时60（秒）
 #define WRONG_PENALTY 20.0f   // 拼写错误扣血
 #define TIME_PENALTY 20.0f    // 倒计时归零扣血（并重置倒计时）
 #define LETTER_RADIUS 22.0f   // 字母拾取半径
@@ -557,18 +557,16 @@ static void MazeOnSpellCorrect(void *ctx) {
   // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
   PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
   if (d->level >= MAX_LEVELS) {
-    // 最终通关：播放最终胜利音效，记录速通最佳时间并回到开始菜单
-    if (d->app->gameFinishSoundValid)
-      PlaySound(d->app->gameFinishSound);
+    // 最终通关：记录速通最佳时间，经过渡进入通关结算场景
+    // （scene_finish，最终胜利音效由该场景 onEnter 播放）
     SpeedrunFinish((GameApp *)d->app);
-    GameStackReplace(
-        d->owner,
-        TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+    GameStackReplace(d->owner,
+                     TransitionSceneCreate(d->app, FinishSceneCreate(d->app)));
     return;
   }
   // 普通通关：播放通关单关音效（scene_battle 不计入），经过渡进入下一关
-  if (d->app->levelFinishSoundValid)
-    PlaySound(d->app->levelFinishSound);
+  GameAppPlaySound(d->app, d->app->levelFinishSound,
+                   d->app->levelFinishSoundValid);
   GameStackReplace(d->owner, TransitionSceneCreate(
                                  d->app, LevelFlowCreateNextScene(
                                              d->app, d->level, d->difficulty)));

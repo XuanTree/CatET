@@ -54,8 +54,8 @@ void DrawBullet(Bullet *bullet) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 弹幕 pattern：敌怪每次攻击随机选择一种，数量也随机，增加玩法多样性。
-// 4 种 pattern 均由「初始速度排布」构成（无需逐帧特殊状态），统一用
+// 弹幕 pattern：敌怪每次攻击随机选择一种（共 10 种），数量也随机，增加玩法
+// 多样性。均由「初始速度/位置排布」构成（无需逐帧特殊状态），统一用
 // InitBullet 生成；复用槽位前释放旧贴图，避免同一次战斗内 GPU 纹理泄漏。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -63,10 +63,17 @@ BulletPattern BulletPatternRoll(void) {
   return (BulletPattern)genRandomNum(BULLET_PATTERN_COUNT);
 }
 
-// 弹幕扇形总散布角（弧度）
-#define BULLET_SPREAD_TIGHT 0.5f       // 瞄准扇形总散布角
-#define BULLET_SPREAD_WIDE 1.6f        // 弹幕雨总散布角（宽）
-#define BULLET_CROSS_LINE_OFFSET 0.06f // 十字每条对角线的内部散布
+// 弹幕各 pattern 的散布/排布参数（弧度 / 像素）
+#define BULLET_SPREAD_TIGHT 0.5f  // 瞄准窄扇形总散布角
+#define BULLET_SPREAD_WIDE 1.6f   // 宽扇形总散布角（弹幕雨 / 瞄准大扇形）
+#define BULLET_SPIRAL_STEP 0.28f  // 螺旋每颗递增角度（弧度）
+#define BULLET_PINCER_ANGLE 0.5f  // 钳形两翼相对玩家的偏移角（弧度）
+#define BULLET_PINCER_SPREAD 0.4f // 钳形每组内部总散布
+#define BULLET_WALL_SPACING 24.f  // 弹幕墙相邻弹幕间距（像素）
+#define BULLET_STAR_AXES 6        // 星形放射轴数
+#define BULLET_STAR_SPREAD 0.6f   // 星形每轴内部总散布
+#define BULLET_ARC_GAP 0.5f       // 三段弧相邻组偏移角（弧度）
+#define BULLET_HAIL_SPACING 34.f  // 天降弹幕横向间距（像素）
 
 // 按 pattern 生成弹幕（见 bullet.h 注释）。
 int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
@@ -87,7 +94,7 @@ int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
   int spawned = 0;
   switch (pattern) {
   case BULLET_PATTERN_AIMED: {
-    // 瞄准扇形：以目标（玩家）方向为中心均匀散射
+    // 瞄准扇形：以玩家方向为中心窄扇形散射
     float base = atan2f(target.y - origin.y, target.x - origin.x);
     for (int i = 0; i < count; i++) {
       float angle =
@@ -120,18 +127,113 @@ int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
     }
     break;
   }
-  case BULLET_PATTERN_CROSS: {
-    // 十字斜扫：沿 0°/45°/90°/135° 四条对角线发射，每条内带微小散布
-    int perLine = (count + 3) / 4;
-    for (int k = 0; k < 4; k++) {
-      float base = PI * (float)k / 4.0f;
-      for (int j = 0; j < perLine && spawned < count; j++) {
-        float angle =
-            base + (j - (perLine - 1) * 0.5f) * BULLET_CROSS_LINE_OFFSET;
+  case BULLET_PATTERN_SPIRAL: {
+    // 螺旋：基准朝玩家，角度随序号持续递增 → 形成螺旋射线
+    float base = atan2f(target.y - origin.y, target.x - origin.x);
+    float start = base - (count - 1) * 0.5f * BULLET_SPIRAL_STEP;
+    for (int i = 0; i < count; i++) {
+      float angle = start + (float)i * BULLET_SPIRAL_STEP;
+      Vector2 vel = {cosf(angle) * speed, sinf(angle) * speed};
+      InitBullet(&bullets[spawned], origin, vel, damage);
+      spawned++;
+    }
+    break;
+  }
+  case BULLET_PATTERN_PINCER: {
+    // 钳形：朝玩家左右两侧各一组窄扇形，封锁两侧走位
+    float base = atan2f(target.y - origin.y, target.x - origin.x);
+    int left = count / 2;
+    int right = count - left;
+    for (int i = 0; i < left; i++) {
+      float angle =
+          base - BULLET_PINCER_ANGLE +
+          (i - (left - 1) * 0.5f) * BULLET_PINCER_SPREAD / (float)left;
+      Vector2 vel = {cosf(angle) * speed, sinf(angle) * speed};
+      InitBullet(&bullets[spawned], origin, vel, damage);
+      spawned++;
+    }
+    for (int i = 0; i < right; i++) {
+      float angle =
+          base + BULLET_PINCER_ANGLE +
+          (i - (right - 1) * 0.5f) * BULLET_PINCER_SPREAD / (float)right;
+      Vector2 vel = {cosf(angle) * speed, sinf(angle) * speed};
+      InitBullet(&bullets[spawned], origin, vel, damage);
+      spawned++;
+    }
+    break;
+  }
+  case BULLET_PATTERN_WALL: {
+    // 弹幕墙：横向一排平行弹幕，整体朝玩家方向扫射
+    float base = atan2f(target.y - origin.y, target.x - origin.x);
+    Vector2 dir = {cosf(base) * speed, sinf(base) * speed};
+    Vector2 perp = {cosf(base + PI * 0.5f), sinf(base + PI * 0.5f)};
+    for (int i = 0; i < count; i++) {
+      float off = (i - (count - 1) * 0.5f) * BULLET_WALL_SPACING;
+      Vector2 pos = {origin.x + perp.x * off, origin.y + perp.y * off};
+      InitBullet(&bullets[spawned], pos, dir, damage);
+      spawned++;
+    }
+    break;
+  }
+  case BULLET_PATTERN_STAR: {
+    // 星形：6 轴放射（每 60°），每轴带内部微散布
+    int perAxis = (count + BULLET_STAR_AXES - 1) / BULLET_STAR_AXES;
+    for (int k = 0; k < BULLET_STAR_AXES && spawned < count; k++) {
+      float axisBase = 2.0f * PI * (float)k / (float)BULLET_STAR_AXES;
+      int thisCount = perAxis;
+      if (spawned + thisCount > count)
+        thisCount = count - spawned;
+      for (int j = 0; j < thisCount; j++) {
+        float angle = axisBase + (j - (thisCount - 1) * 0.5f) *
+                                     BULLET_STAR_SPREAD / (float)thisCount;
         Vector2 vel = {cosf(angle) * speed, sinf(angle) * speed};
         InitBullet(&bullets[spawned], origin, vel, damage);
         spawned++;
       }
+    }
+    break;
+  }
+  case BULLET_PATTERN_AIMED_WIDE: {
+    // 瞄准大扇形：宽角扇形朝向玩家，覆盖更广走位区
+    float base = atan2f(target.y - origin.y, target.x - origin.x);
+    for (int i = 0; i < count; i++) {
+      float angle =
+          base + (i - (count - 1) * 0.5f) * BULLET_SPREAD_WIDE / (float)count;
+      Vector2 vel = {cosf(angle) * speed, sinf(angle) * speed};
+      InitBullet(&bullets[spawned], origin, vel, damage);
+      spawned++;
+    }
+    break;
+  }
+  case BULLET_PATTERN_TRIPLE_ARC: {
+    // 三段弧：朝玩家左/中/右三组扇形齐射
+    float base = atan2f(target.y - origin.y, target.x - origin.x);
+    const float centers[3] = {base - BULLET_ARC_GAP, base,
+                              base + BULLET_ARC_GAP};
+    int each = count / 3;
+    int rem = count % 3;
+    int groupCounts[3] = {each + (rem > 0 ? 1 : 0), each + (rem > 1 ? 1 : 0),
+                          each};
+    for (int g = 0; g < 3; g++) {
+      for (int j = 0; j < groupCounts[g] && spawned < count; j++) {
+        float angle = centers[g] + (j - (groupCounts[g] - 1) * 0.5f) *
+                                       BULLET_SPREAD_TIGHT /
+                                       (float)groupCounts[g];
+        Vector2 vel = {cosf(angle) * speed, sinf(angle) * speed};
+        InitBullet(&bullets[spawned], origin, vel, damage);
+        spawned++;
+      }
+    }
+    break;
+  }
+  case BULLET_PATTERN_HAIL: {
+    // 天降：从敌怪处沿屏幕上方多点竖直下落
+    for (int i = 0; i < count; i++) {
+      float off = (i - (count - 1) * 0.5f) * BULLET_HAIL_SPACING;
+      Vector2 pos = {origin.x + off, origin.y};
+      Vector2 vel = {0.f, speed};
+      InitBullet(&bullets[spawned], pos, vel, damage);
+      spawned++;
     }
     break;
   }

@@ -1,13 +1,11 @@
 #include "game.h"
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 平台跳跃式关卡（docs/game_instructions.md 关卡设计 3，核心玩法）：
+// 测试用关卡，仅仅用来做关卡测试。0.1.0版本构建后，好像就没什么用了？？？
+// 但是这个代码就不删除掉了,留作纪念吧
+// 哦什么,多编译一个文件会使最后的包体积增大?
+// 那咋了,那咋了,那咋了,我就留着
 // 玩家在平台与地面之间跳跃前进，关卡终点设有小红旗，玩家触碰即通关，
-// 进入下一关（关卡类型按权重刷新）。
-// 玩法一（极速拼写）暂未独立实现，当前由本场景代替，关卡限时 40 秒：
-// 右下角显示剩余倒计时，倒计时归零扣除一定生命值并重置。
-// 通关第 MAX_LEVELS 关判定最终胜利（记录速通最佳时间，回到开始菜单）。
-// HP 归零判定失败。
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 场景私有数据：栈持有并负责释放
@@ -163,18 +161,15 @@ static void TestUpdate(GameScene *self, float dt) {
     // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
     PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
     if (d->level >= MAX_LEVELS) {
-      // 最终通关（第 MAX_LEVELS 关）：播放最终胜利音效，记录速通最佳时间，
-      // 经过渡回到开始菜单
-      if (d->app->gameFinishSoundValid)
-        PlaySound(d->app->gameFinishSound);
+      // 最终通关（第 MAX_LEVELS 关）：记录速通最佳时间，经过渡进入通关结算
+      // 场景（scene_finish，最终胜利音效由该场景 onEnter 播放）
       SpeedrunFinish((GameApp *)d->app);
-      GameStackReplace(
-          self->owner,
-          TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+      GameStackReplace(self->owner, TransitionSceneCreate(
+                                        d->app, FinishSceneCreate(d->app)));
     } else {
       // 普通通关：播放通关单关音效（scene_battle 不计入），经过渡进入下一关
-      if (d->app->levelFinishSoundValid)
-        PlaySound(d->app->levelFinishSound);
+      GameAppPlaySound(d->app, d->app->levelFinishSound,
+                       d->app->levelFinishSoundValid);
       GameStackReplace(
           self->owner,
           TransitionSceneCreate(d->app, LevelFlowCreateNextScene(
@@ -195,8 +190,8 @@ static void TestUpdate(GameScene *self, float dt) {
   // 触碰敌怪瞬间（isCountdown 上升沿）：播放 meet_the_enemy
   // 音效（画面定格开始）
   if (d->enemy.isAlive && d->enemy.isCountdown && !d->enemyWasCountdown) {
-    if (d->app->meetEnemySoundValid)
-      PlaySound(d->app->meetEnemySound);
+    GameAppPlaySound(d->app, d->app->meetEnemySound,
+                     d->app->meetEnemySoundValid);
   }
   d->enemyWasCountdown = d->enemy.isAlive && d->enemy.isCountdown;
 
@@ -214,7 +209,8 @@ static void TestUpdate(GameScene *self, float dt) {
   d->cat.isOnTheGround = false;
   PlayerCollision(&d->cat, &d->platform);
   PlayerCollision(&d->cat, &d->platform_m);
-  GroundCollision(&d->cat);
+  // 地面宽 1000：与 TestDraw 中 DrawRectangle(0, ..., 1000.f, 50) 一致
+  GroundCollision(&d->cat, 1000.f);
 
   // 掉出屏幕外一定距离后传送到最近的平台/地面，避免无限下落
   RespawnIfFallen(d, &d->cat);
@@ -223,7 +219,7 @@ static void TestUpdate(GameScene *self, float dt) {
   if (d->enemy.isAlive) {
     d->enemy.isOnTheGround = false;
     UpdateEnemy(&d->enemy, dt);
-    eGroundCollision(&d->enemy);
+    eGroundCollision(&d->enemy, 1000.f);
     ePlatformCollision(&d->enemy, &d->platform);
     ePlatformCollision(&d->enemy, &d->platform_m);
     ePlayerCollision(&d->enemy, &d->cat);
@@ -285,7 +281,7 @@ static void TestDraw(GameScene *self) {
 
   // 绘制敌怪（战斗胜利后 isAlive=false 不再绘制，即“删除该敌怪”）
   if (d->enemy.isAlive)
-    DrawEnemy(&d->enemy, d->enemySource);
+    DrawEnemy(&d->enemy, d->enemySource, 0.f);
 
   // 绘制终点小红旗
   DrawFlag(&d->flag);

@@ -26,4 +26,9 @@
 #define CLEAR_HEALTH_REWARD 5.0f
 #define BOSS_CLEAR_HEALTH_REWARD 20.0f
 
+// 音频总开关默认值：首次运行或旧存档缺少字段时使用（设置界面可修改，
+// 持久化到 save.json，见 systems/save_data）。
+#define DEFAULT_SOUND_ENABLED true
+#define DEFAULT_MUSIC_ENABLED true
+
 #endif // GAME_CONFIG_H

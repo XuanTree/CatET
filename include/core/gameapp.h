@@ -36,6 +36,14 @@ typedef struct GameApp {
   bool speedrunActive;   // 当前局是否在速通计时中
   float bestTime;        // 最佳通关时间（秒），< 0 表示尚无记录
   Image icon;            // 窗口图标（保留以便最后卸载）
+
+  // ── 音频总开关（设置界面控制，见 scenes/scene_settings）─────────────────
+  // 所有音效/音乐播放统一经 GameAppPlaySound / GameAppPlayMusic 入口，
+  // 总开关关闭时静默跳过；持久化到 save.json（见 systems/save_data）。
+  bool soundEnabled; // 音效总开关（false 时所有音效静默，默认 true）
+  bool musicEnabled; // 音乐总开关（false 时所有音乐静默，默认 true；
+                     // 当前版本尚无音乐资源，接口预留）
+
   Sound uiSound;         // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
   bool uiSoundValid; // 是否成功加载 UI 音效（无效时静默跳过播放，避免空操作）
   Sound
@@ -92,5 +100,24 @@ void GameAppDrawText(const GameApp *app, const char *text, int posX, int posY,
 
 // 使用全局像素字体测量文本宽度（等价于 MeasureText）。
 int GameAppMeasureText(const GameApp *app, const char *text, int fontSize);
+
+// ── 音频总控接口（音效/音乐开关，设置界面经此读写）──────────────────────
+
+// 设置/查询音效总开关（关闭后 GameAppPlaySound 播放被静默跳过）。
+void GameAppSetSoundEnabled(GameApp *app, bool enabled);
+bool GameAppIsSoundEnabled(const GameApp *app);
+
+// 设置/查询音乐总开关（关闭后 GameAppPlayMusic 播放被静默跳过；
+// 当前尚无音乐资源，供后续接入 BGM 使用）。
+void GameAppSetMusicEnabled(GameApp *app, bool enabled);
+bool GameAppIsMusicEnabled(const GameApp *app);
+
+// 统一音效播放入口：音效总开关关闭或 soundValid 为 false 时静默跳过。
+// 全项目播放音效应统一走此接口，避免绕过总开关。
+void GameAppPlaySound(const GameApp *app, Sound sound, bool soundValid);
+
+// 统一音乐播放入口（预留）：音乐总开关关闭时静默跳过。
+// 接入 BGM 后，加载/播放/循环的调用方在播放前经此接口启动流。
+void GameAppPlayMusic(const GameApp *app, Music music);
 
 #endif // GAMEAPP_H

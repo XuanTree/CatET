@@ -6,25 +6,30 @@
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 战斗场景（回合制，docs/game_instructions.md §战斗场景）：
-//   以转场（淡入）压入平台跳跃关卡之上，作为一次独立的小型对决，共 3 个回合：
+//   以转场（淡入）压入平台跳跃关卡之上，作为一次独立的小型对决：
 //   - 玩家回合：屏幕上方给出 3 个候选单词与 1 个「词性+汉语」提示，玩家用
-//     左右键（A/D 或 ←/→）选择、Z 确认；选对无惩罚，选错扣除生命值。
-//   - 敌怪回合：不论选对选错敌怪都有回合——敌怪先说话（对话框逐字输出，
-//     X 可跳过），停顿 0.45s 后随机选一种弹幕 pattern（瞄准/环形/弹幕雨/十字）
-//     发射，玩家可在两个小平台上移动躲避；所有弹幕消失后结束本回合。
-//   完成 3 个回合即胜利（不论选对次数）：画面停顿 0.8s（预留胜利音效）后
+//     左右键（A/D 或 ←/→）选择、Z 确认；选对答对数 +1，选错扣除生命值。
+//   - 敌怪回合：敌怪先说话（对话框逐字输出，X 可跳过），停顿 0.30s（期间敌怪
+//     原位置快速旋转一周作蓄力提示）后随机选一种弹幕 pattern（共 10 种）发射，
+//     玩家可在两个小平台上移动躲避；所有弹幕消失后回到玩家回合。
+//   胜利条件 = 答对 totalRounds（1~4）个单词（docs：拼写正确一定数量后进入
+//   下一关）：以玩家回合为主，最后一次答对即立即胜利，不再等敌怪释放完最后
+//   一波攻击。胜利后画面停顿 0.8s（预留胜利音效）、
 //   enemy->isAlive=false（“删除该敌怪”），再经淡出转场 Pop 回平台关卡；
-//   玩家 HP 归零：失败，Replace 到 FailScene。
+//   玩家 HP 归零（拼写错误或弹幕命中）：失败，Replace 到 FailScene。
 //   难度每提高一档：拼写错误惩罚 +50%、弹幕伤害 +100%（docs 玩法说明）。
 //   （玩家最大生命值 +25%/档为全局开局加成，不属于战斗场景职责，未在此处理）
 // ─────────────────────────────────────────────────────────────────────────────
+
+// C语言真是本质宏孩儿啊
+// 不过,后续调整数值的时候,只需要改改宏也是挺方便的
 
 // ── 战斗常量 ──────────────────────────────────────────────────────────────
 #define BATTLE_MAX_BULLETS 24 // 弹幕数组上限
 #define BATTLE_VOLLEY_BASE 4  // 弹幕数量下限（每难度 +2）
 #define BATTLE_VOLLEY_RANDOM_EXTRA                                             \
   2 // 弹幕数量随机增量（在 [lo, lo+extra] 内随机）
-#define BATTLE_BULLET_SPEED 230.f      // 弹幕飞行速度（世界坐标/秒）
+#define BATTLE_BULLET_SPEED 274.f      // 弹幕飞行速度（世界坐标/秒）
 #define BATTLE_WRONG_PENALTY_BASE 20.f // 基础拼写错误惩罚（×1.5^难度）
 #define BATTLE_GRAVITY 980.f  // 与 player.c GRAVITY 一致（回合内仅下落用）
 #define BATTLE_GROUND_H 50    // 地面高度（与各关卡一致，顶面 y=480-50）
@@ -32,17 +37,17 @@
 #define BATTLE_SMALL_Y1 215   // 两个小平台固定高度（x 随机）
 #define BATTLE_SMALL_Y2 335   // 两个小平台固定高度（x 随机）
 #define BATTLE_PLAT_MARGIN 40 // 平台距屏幕边缘的最小间距
-// 战斗总回合数随机（小怪提问单词数 1~4，docs：拼写正确一定数量后进入下一关）
-#define BATTLE_ROUNDS_MIN 1   // 提问单词数下限
-#define BATTLE_ROUNDS_MAX 4   // 提问单词数上限
+// 胜利所需答对单词数随机（1~4，docs：拼写正确一定数量后进入下一关）
+#define BATTLE_ROUNDS_MIN 1   // 所需答对单词数下限
+#define BATTLE_ROUNDS_MAX 4   // 所需答对单词数上限
 #define BATTLE_WIN_DELAY 0.8f // 胜利后画面停顿时长（预留胜利音效播放窗口）
 // 敌怪说话机制（dialogue 系统，见 dialogue.h）：
 #define BATTLE_DIALOGUE_CHAR_TIME 0.04f // 逐字输出的每字间隔（秒，较快吐字）
 #define BATTLE_DIALOGUE_MAX_TIME                                               \
   2.5f // 对话框最长存在时长（秒，含逐字+保持，X 可跳过）
-#define BATTLE_ATTACK_DELAY 0.45f // 每波攻击前的停顿时长（秒）
+#define BATTLE_ATTACK_DELAY                                                    \
+  0.30f // 每波攻击前的停顿时长（秒，期间敌怪旋转蓄力）
 // 无敌时间：玩家被弹幕命中后获得的免伤窗口（秒），期间弹幕穿身而过，
-// 绘制时用闪烁表现（见 BattleDraw）。
 #define BATTLE_INVINCIBLE_TIME 1.5f
 // 敌怪每回合多波次攻击：
 #define BATTLE_WAVES_BASE 2   // 每回合最少攻击波次
@@ -116,8 +121,8 @@ typedef struct BattleSceneData {
   // 战斗状态
   BattlePhase phase;
   BattleResult lastResult; // 上回合选词结果（敌怪回合期间显示反馈）
-  int totalRounds;         // 本场战斗总回合数（随机 1~4，见 BattleEnter）
-  int roundsLeft;          // 剩余回合数（归零即胜利）
+  int totalRounds;         // 胜利所需答对单词数（随机 1~4，见 BattleEnter）
+  int correctCount;        // 已答对单词数（达到 totalRounds 即胜利）
   float winTimer;          // 胜利停顿倒计时（BATTLE_WIN_DELAY，音效无效时兜底）
   bool winSoundPlayed;     // 胜利音效是否已播放（防止重复触发）
   bool transitionRequested; // 已请求 Pop/Replace，防止同帧重复切换
@@ -245,8 +250,7 @@ static void BattleDamagePlayer(BattleSceneData *d, float amount) {
   player->lastHealth = player->health; // 同步基准，避免 UpdatePlayer 二次触发
   PlayerTriggerHit(player); // 直接触发 HIT 动画（同步基准后 UpdatePlayer 不会
                             // 走伤害检测，必须手动触发，否则受伤无 hit 动画）
-  if (d->app->catHitSoundValid)
-    PlaySound(d->app->catHitSound);
+  GameAppPlaySound(d->app, d->app->catHitSound, d->app->catHitSoundValid);
 }
 
 // ── 回合更新 ──────────────────────────────────────────────────────────────
@@ -261,7 +265,9 @@ static void UpdatePlayerFrozen(BattleSceneData *d, float dt) {
   player->isOnTheGround = false;
   PlayerCollision(player, &d->platform_s1);
   PlayerCollision(player, &d->platform_s2);
-  GroundCollision(player);
+  // 地面宽 = logicWidth：与 BattleDraw 中 DrawRectangle(0, ..., screenW, ...)
+  // 一致
+  GroundCollision(player, (float)d->app->logicWidth);
   // 防御：掉到地面以下时送回地面顶面
   const float groundTop = (float)(d->app->logicHeight - BATTLE_GROUND_H);
   if (player->position.y > groundTop + 100.f) {
@@ -299,21 +305,23 @@ static void UpdatePlayerTurn(BattleSceneData *d, float dt) {
     d->selectIndex = (d->selectIndex + 2) % 3; // 左移
   else if (IsKeyPressed(KEY_D) || IsKeyPressed(KEY_RIGHT))
     d->selectIndex = (d->selectIndex + 1) % 3; // 右移
-  if (d->selectIndex != prevSelect && d->app->uiSoundValid)
-    PlaySound(d->app->uiSound);
+  if (d->selectIndex != prevSelect) {
+    GameAppPlaySound(d->app, d->app->uiSound, d->app->uiSoundValid);
+  }
 
-  // Z 确认选词（正确与否不影响回合推进，只影响扣血/反馈）
+  // Z 确认选词（选对推进答对进度，选错扣血不推进）
   if (IsKeyPressed(KEY_Z)) {
     // 选择答案播放 UI 音效（ui_sound.ogg）
-    if (d->app->uiSoundValid)
-      PlaySound(d->app->uiSound);
+    GameAppPlaySound(d->app, d->app->uiSound, d->app->uiSoundValid);
     if (d->selectIndex == d->answerIndex) {
-      // 选对：不扣血，仅记录反馈
+      // 选对：答对数 +1（胜利条件为答对 totalRounds 个单词）
       d->lastResult = BATTLE_RESULT_CORRECT;
+      d->correctCount++;
     } else {
-      // 选错：扣除生命值（随难度递增）。统一走 BattleDamagePlayer 扣血并
-      // 同步 lastHealth——避免进入敌怪回合后 UpdatePlayer 检测到血量下降
-      // 触发多余的击退/受伤效果，把玩家弹进弹幕造成第二次伤害。
+      // 选错：不推进答对进度，扣除生命值（随难度递增）。统一走
+      // BattleDamagePlayer 扣血并同步 lastHealth——避免进入敌怪回合后
+      // UpdatePlayer 检测到血量下降触发多余的击退/受伤效果，把玩家弹进弹幕
+      // 造成第二次伤害。
       BattleDamagePlayer(d, d->wrongPenalty);
       if (player->health <= 0.f) {
         d->phase = BATTLE_PHASE_LOSE;
@@ -321,7 +329,16 @@ static void UpdatePlayerTurn(BattleSceneData *d, float dt) {
       }
       d->lastResult = BATTLE_RESULT_WRONG;
     }
-    // 不论选对选错，敌怪都有回合（docs：敌怪回合）
+
+    // 以玩家回合为主：答对次数达到 totalRounds 即立即胜利，不再进入敌怪回合
+    // 的最后一波攻击（docs：敌怪回合）
+    if (d->correctCount >= d->totalRounds) {
+      d->phase = BATTLE_PHASE_WIN;
+      d->enemy->isAlive = false; // “删除该敌怪”（胜利停顿期间不再绘制）
+      return;
+    }
+
+    // 未达到所需答对数：不论对错，敌怪都有回合（docs：敌怪回合）
     StartEnemyTurn(d);
   }
 
@@ -378,7 +395,9 @@ static void UpdatePlayerMovable(BattleSceneData *d, float dt) {
   player->isOnTheGround = false;
   PlayerCollision(player, &d->platform_s1);
   PlayerCollision(player, &d->platform_s2);
-  GroundCollision(player);
+  // 地面宽 = logicWidth：与 BattleDraw 中 DrawRectangle(0, ..., screenW, ...)
+  // 一致
+  GroundCollision(player, (float)d->app->logicWidth);
 
   // 水平边界钳制：玩家不能走出屏幕
   if (player->position.x < 0.f)
@@ -448,14 +467,9 @@ static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
       d->enemyStage = ENEMY_ATTACK_WINDUP;
       d->stageTimer = BATTLE_ATTACK_DELAY;
     } else {
-      // 本回合所有波次结束：扣减剩余回合数，满 BATTLE_TOTAL_ROUNDS 回合胜利
-      d->roundsLeft--;
-      if (d->roundsLeft <= 0) {
-        d->phase = BATTLE_PHASE_WIN;
-        d->enemy->isAlive = false; // “删除该敌怪”（胜利停顿期间不再绘制）
-      } else {
-        StartPlayerTurn(d);
-      }
+      // 本回合所有波次结束：敌怪攻击回合结束，回到玩家回合继续答题。
+      // 胜利判定在玩家回合（答对数达到 totalRounds 即胜利），此处不再判胜。
+      StartPlayerTurn(d);
     }
   }
 }
@@ -560,13 +574,13 @@ static void BattleEnter(GameScene *self) {
   d->wrongPenalty =
       BATTLE_WRONG_PENALTY_BASE * powf(1.5f, (float)d->difficulty);
 
-  // 初始化战斗状态：从玩家回合开始（共 BATTLE_TOTAL_ROUNDS 个回合）
+  // 初始化战斗状态：从玩家回合开始
   d->phase = BATTLE_PHASE_PLAYER_TURN;
   d->lastResult = BATTLE_RESULT_NONE;
-  // 本场战斗随机提问单词数（小怪强弱不一：1~4 个）
+  // 本场战斗胜利所需答对单词数（小怪强弱不一：1~4 个）
   d->totalRounds = BATTLE_ROUNDS_MIN +
                    genRandomNum(BATTLE_ROUNDS_MAX - BATTLE_ROUNDS_MIN + 1);
-  d->roundsLeft = d->totalRounds;
+  d->correctCount = 0;
   d->winTimer = BATTLE_WIN_DELAY;
   d->winSoundPlayed = false;
   d->transitionRequested = false;
@@ -607,8 +621,8 @@ static void BattleUpdate(GameScene *self, float dt) {
     // 「淡出后 Pop」转场，露出下层平台关卡（只请求一次，避免同帧重复切换）。
     // 音效加载失败时用 BATTLE_WIN_DELAY 兜底，防止卡死。
     if (!d->winSoundPlayed) {
-      if (d->app->battleWinSoundValid)
-        PlaySound(d->app->battleWinSound);
+      GameAppPlaySound(d->app, d->app->battleWinSound,
+                       d->app->battleWinSoundValid);
       d->winSoundPlayed = true;
     }
     if (d->app->battleWinSoundValid) {
@@ -643,8 +657,8 @@ static void BattleUpdate(GameScene *self, float dt) {
 
 // ── HUD / 绘制 ────────────────────────────────────────────────────────────
 
-// 战斗 HUD：左下角生命值条、左上角回合信息、玩家回合的三选一单词与提示。
-// 布局说明：敌怪固定居中于屏幕最上方（两侧留白可用），回合信息放左上角；
+// 战斗 HUD：左下角生命值条、左上角答对进度、玩家回合的三选一单词与提示。
+// 布局说明：敌怪固定居中于屏幕最上方（两侧留白可用），答对进度放左上角；
 // 三选一单词框放中上部、操作提示放底部，避免与敌怪/平台重叠。
 static void DrawBattleHud(BattleSceneData *d) {
   const int screenW = d->app->logicWidth;
@@ -655,12 +669,12 @@ static void DrawBattleHud(BattleSceneData *d) {
   // 左下角生命值条
   HudDrawHealthBar(d->app, d->player->health, d->player->maxHealth);
 
-  // 左上角：回合信息（敌怪居中于顶部，两侧留白可用）
+  // 左上角：答对进度（敌怪居中于顶部，两侧留白可用）
   if (d->phase == BATTLE_PHASE_PLAYER_TURN) {
-    // 当前回合 / 总回合（不论选对次数，满 BATTLE_TOTAL_ROUNDS 回合胜利）
+    // 答对 totalRounds 个单词即胜利（未达则敌怪回合后继续答题）
     char info[64];
-    snprintf(info, sizeof(info), "Round %d / %d",
-             d->totalRounds - d->roundsLeft + 1, d->totalRounds);
+    snprintf(info, sizeof(info), "Correct %d / %d", d->correctCount,
+             d->totalRounds);
     GameAppDrawText(d->app, info, (int)margin, (int)margin, fontSize, WHITE);
   } else if (d->phase == BATTLE_PHASE_ENEMY_TURN) {
     // 上回合选词结果反馈（选对绿色 / 选错红色）
@@ -779,8 +793,19 @@ static void BattleDraw(GameScene *self) {
                 Fade(LIGHTGRAY, 0.30f));
 
   // 敌怪：屏幕最上方，无法移动，正常播放动画
-  if (d->enemy->isAlive)
-    DrawEnemy(d->enemy, d->enemySource);
+  if (d->enemy->isAlive) {
+    // 蓄力提示：发射弹幕前的短暂停顿（ENEMY_ATTACK_WINDUP）里，敌怪原位置
+    // 快速旋转贴图一圈（0°→360°），随 stageTimer 倒计时推进，提示即将发射。
+    float rot = 0.f;
+    if (d->phase == BATTLE_PHASE_ENEMY_TURN &&
+        d->enemyStage == ENEMY_ATTACK_WINDUP) {
+      float t = d->stageTimer / BATTLE_ATTACK_DELAY; // 1→0
+      if (t < 0.f)
+        t = 0.f;
+      rot = (1.f - t) * 360.f;
+    }
+    DrawEnemy(d->enemy, d->enemySource, rot);
+  }
   // 玩家：最下方
   DrawPlayer(d->player, d->playerSource);
 

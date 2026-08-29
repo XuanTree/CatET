@@ -28,8 +28,7 @@ static void FailEnter(GameScene *self) {
   // 失败：停止隐式全局计时器（不记录数据，仅成功通关才记录）
   SpeedrunStop(d->app);
   // 失败音效（game_over.ogg）：玩家生命值归 0 进入失败界面时播放
-  if (d->app->gameOverSoundValid)
-    PlaySound(d->app->gameOverSound);
+  GameAppPlaySound(d->app, d->app->gameOverSound, d->app->gameOverSoundValid);
   MenuNavInit(&d->nav, FAIL_ITEM_COUNT);
 }
 
@@ -42,8 +41,7 @@ static void FailUpdate(GameScene *self, float dt) {
   MenuAction act = MenuNavUpdate(&d->nav);
   // 选中项切换（W/S/↑↓）或确认（Z）时播放 UI 音效
   if (d->nav.selected != prevSelected || act == MENU_ACTION_CONFIRM) {
-    if (d->app->uiSoundValid)
-      PlaySound(d->app->uiSound);
+    GameAppPlaySound(d->app, d->app->uiSound, d->app->uiSoundValid);
   }
   if (act == MENU_ACTION_CONFIRM) {
     d->action = kFailActions[d->nav.selected];

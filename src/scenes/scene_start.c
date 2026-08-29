@@ -5,7 +5,7 @@
 typedef enum StartAction {
   START_ACTION_NONE = 0,
   START_ACTION_PLAY,     // 开始游戏 → 进入难度选择二级菜单
-  START_ACTION_SETTINGS, // 设置（暂未实现，占位）
+  START_ACTION_SETTINGS, // 设置 → 压入设置覆盖层（scene_settings）
   START_ACTION_QUIT,     // 退出游戏
 } StartAction;
 
@@ -59,8 +59,7 @@ static void StartUpdate(GameScene *self, float dt) {
     // 选中项切换（W/S/↑↓）或确认/返回（Z/X）时播放 UI 音效
     if (d->diffNav.selected != prevSelected || act == MENU_ACTION_CONFIRM ||
         act == MENU_ACTION_BACK) {
-      if (d->app->uiSoundValid)
-        PlaySound(d->app->uiSound);
+      GameAppPlaySound(d->app, d->app->uiSound, d->app->uiSoundValid);
     }
     if (act == MENU_ACTION_CONFIRM) {
       d->diffAction = d->diffNav.selected; // 0/1/2 对应 Easy/Normal/Hard
@@ -89,8 +88,7 @@ static void StartUpdate(GameScene *self, float dt) {
   MenuAction act = MenuNavUpdate(&d->nav);
   // 选中项切换（键盘 W/S/↑↓）或确认（Z）时播放 UI 音效
   if (d->nav.selected != prevSelected || act == MENU_ACTION_CONFIRM) {
-    if (d->app->uiSoundValid)
-      PlaySound(d->app->uiSound);
+    GameAppPlaySound(d->app, d->app->uiSound, d->app->uiSoundValid);
   }
   if (act == MENU_ACTION_CONFIRM) {
     d->action = kStartActions[d->nav.selected];
@@ -105,7 +103,9 @@ static void StartUpdate(GameScene *self, float dt) {
     d->diffAction = -1;
     break;
   case START_ACTION_SETTINGS:
-    // 设置界面暂未实现，仅占位
+    // 设置作为覆盖层压栈：返回（X/ESC）自动弹回主菜单，
+    // 不再在主菜单内自绘设置二级菜单（见 scenes/scene_settings）
+    GameStackPush(self->owner, SettingsSceneCreate(d->app));
     break;
   case START_ACTION_QUIT:
     GameStackRequestQuit(self->owner);
@@ -189,7 +189,7 @@ static void DrawDifficultyMenu(StartData *d) {
 }
 
 static void StartDraw(GameScene *self) {
-  StartData *d = (StartData *)self->data;
+  StartData* d = (StartData*)self->data;
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 
@@ -251,7 +251,8 @@ GameScene *StartSceneCreate(GameApp *app) {
 
   scene->name = "StartScene";
   scene->data = data;
-  scene->flags = GAME_SCENE_NONE;
+  // 被设置覆盖层（SettingsScene）压栈时仍绘制，作为其半透明遮罩的底层画面
+  scene->flags = GAME_SCENE_DRAW_WHEN_HIDDEN;
   scene->pauseable = false; // 开始界面不允许调出暂停画面
   scene->onEnter = StartEnter;
   scene->onUpdate = StartUpdate;

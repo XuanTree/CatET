@@ -66,14 +66,17 @@ void InitEnemy(Enemy *enemy, Vector2 spawn_pos);
 void UpdateEnemy(Enemy *enemy, float dt);
 
 // 绘制敌人：source 为当前动画帧源矩形；按面朝方向水平翻转。
-void DrawEnemy(Enemy *enemy, Rectangle source);
+// rotation 为旋转角度（度，绕精灵中心顺时针），用于战斗蓄力等视觉特效
+// （非战斗场景传 0）。旋转只影响绘制，不影响 enemy->size 碰撞盒。
+void DrawEnemy(Enemy *enemy, Rectangle source, float rotation);
 
 // 敌怪与玩家的碰撞：触碰置 isCountdown 进入 1s 定格窗口，满 1s 调用 onBattle；
 // 玩家触碰敌怪不扣血。
 void ePlayerCollision(Enemy *enemy, Player *player);
 
-// 敌怪能够站在平台和矩形（地面）上
-void eGroundCollision(Enemy *enemy);
+// 敌怪能够站在平台和矩形（地面）上；groundWidth 为地面宽度（调用场景须传入
+// 与自身绘制一致的宽度，避免碰撞面与可视地面错位）。
+void eGroundCollision(Enemy *enemy, float groundWidth);
 
 // 敌怪与单向平台的碰撞：从上方落到平台顶面可站立（从下方/侧面穿过不响应）。
 void ePlatformCollision(Enemy *enemy, Platform *platform);

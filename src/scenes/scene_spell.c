@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── 关卡常量 ──────────────────────────────────────────────────────────────
-#define SPELL_TIME_LIMIT 40.0f    // 限时 40 秒（docs 关卡限时安排）
+#define SPELL_TIME_LIMIT 15.0f    // Update: 极速拼写关卡限时 15 秒
 #define SPELL_TIME_PENALTY 20.0f  // 倒计时归零扣除的生命值（并进入下一关）
 #define SPELL_WRONG_PENALTY 20.0f // 拼写错误扣除的生命值（并重置填空）
 #define SPELL_FALL_SPEED 150.0f   // 字母下落速度（世界坐标/秒）
@@ -252,18 +252,16 @@ static void SpellAdvanceNext(SpellSceneData *d) {
   // 注意：本函数也会在倒计时超时推进时被调用（非通关），通关奖励见
   // SpellOnSpellCorrect（仅真正拼写正确填满全部挖空才发放）
   if (d->level >= MAX_LEVELS) {
-    // 最终通关：播放最终胜利音效，记录速通最佳时间，经过渡回到开始菜单
-    if (d->app->gameFinishSoundValid)
-      PlaySound(d->app->gameFinishSound);
+    // 最终通关：记录速通最佳时间，经过渡进入通关结算场景
+    // （scene_finish，最终胜利音效由该场景 onEnter 播放）
     SpeedrunFinish((GameApp *)d->app);
-    GameStackReplace(
-        d->owner,
-        TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+    GameStackReplace(d->owner,
+                     TransitionSceneCreate(d->app, FinishSceneCreate(d->app)));
     return;
   }
   // 普通通关：播放通关单关音效，经过渡进入下一关（类型按 level_flow 权重刷新）
-  if (d->app->levelFinishSoundValid)
-    PlaySound(d->app->levelFinishSound);
+  GameAppPlaySound(d->app, d->app->levelFinishSound,
+                   d->app->levelFinishSoundValid);
   GameStackReplace(d->owner, TransitionSceneCreate(
                                  d->app, LevelFlowCreateNextScene(
                                              d->app, d->level, d->difficulty)));

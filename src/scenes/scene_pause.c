@@ -38,8 +38,7 @@ static void PauseUpdate(GameScene *self, float dt) {
   MenuAction act = MenuNavUpdate(&d->nav);
   // 选中项切换（W/S/↑↓）、确认（Z）或返回（X）时播放 UI 音效
   if (d->nav.selected != prevSelected || act != MENU_ACTION_NONE) {
-    if (d->app->uiSoundValid)
-      PlaySound(d->app->uiSound);
+    GameAppPlaySound(d->app, d->app->uiSound, d->app->uiSoundValid);
   }
   if (act == MENU_ACTION_BACK) {
     d->app->isPaused = false;

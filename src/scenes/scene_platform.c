@@ -9,12 +9,27 @@
 #define PLATFORM_MAX_NUM 27
 #define ENEMY_MAX_NUM 15
 #define TOWER_TOP_MARGIN 200.f // 塔顶预留高度
-#define MAX_RISE_SAFE 190.f    // 安全值,玩家跳不上去那不是完蛋了?
-#define MAX_SIDE_OFFSET 170.f  // 水平偏移数据（放宽，强化 Z/S 形走势）
-#define MIN_SIDE_OVERLAP                                                       \
-  20.f // 相邻平台最小水平重叠余量（放宽以增强水平随机性）
+#define MAX_RISE_SAFE 190.f    // 行间最大垂直上升（跳跃可达保守上限）
+#define MIN_RISE 90.f          // 行间最小垂直上升（保证始终向上爬升）
+// 行间水平偏移范围：相邻两行平台的偏移在此区间内随机（随 rise 升高向 MIN
+// 收紧）。 300 起步意味着水平走势明显、间距大，较宽的跳跃需要按住 Shift
+// 跑动起跳 （RUN 速度 384px/s：低 rise 可达约 467px、高 rise 约
+// 371px，均大于偏移上限）。
+#define MIN_SIDE_OFFSET 300.f // 行间最小水平偏移（保证水平间距与走势）
+#define MAX_SIDE_OFFSET 400.f // 行间最大水平偏移
+#define ROW_H_GAP 120.f       // 同一行主/岔路平台中心间距的下限（岔路宽度）
+// 中心间距在“两平台半宽之和”之外追加的净间隙，保证同一行平台视觉上不重叠
+#define ROW_GAP_MARGIN 16.f
 #define PLATFORM_TIME_LIMIT 40.0f   // 关卡限时 40 秒
 #define PLATFORM_TIME_PENALTY 20.0f // 倒计时归零扣血
+
+// 平台世界半宽：platform_1/2/3.png 逻辑像素宽分别为 32/64/128，乘 GAME_SCALE 得
+// 世界宽（SMALL=96、MEDIUM=192、LARGE=384）。布局阶段先按类型算尺寸（而不必
+// 先初始化纹理），用于保证平台不重叠、不出界。爬塔只使用小/中平台。
+static float PlatformHalfWidth(PlatformType type) {
+  const float pxW = (type == MEDIUM) ? 64.f : 32.f;
+  return pxW * 0.5f * GAME_SCALE;
+}
 
 // 敌怪战斗回调上下文：记录触发战斗的敌怪下标（多敌怪场景需要知道删除谁），
 // 由每个敌怪的 battleCtx 指向本场景数据中对应的元素。
@@ -92,72 +107,101 @@ static void PlatformSceneEnter(GameScene *self) {
                     (Vector2){worldWidth * 0.5f - 60.f, groundTop - 90.f},
                     SMALL);
 
-  Vector2 prevTop = (Vector2){
-      .x = d->platforms[0].spawnPosition.x + d->platforms[0].size.x * 0.5f,
-      .y = d->platforms[0].spawnPosition.y + d->platforms[0].surfaceOffset};
+  // ── 分支爬塔平台生成 ─────────────────────────────────────────────────
+  // 按「行」向上生成，每行 1~2 个平台：
+  //   - 行间垂直上升 rise（90~190），水平偏移 offset 在 [MIN_SIDE_OFFSET,
+  //     MAX_SIDE_OFFSET]（300~400）内随机（随 rise 升高向 MIN 收紧），方向
+  //     随机 → 相邻两行水平间距明显加大，形成大幅左右回环；
+  //   - 多数行同时放 2 个平台（主平台 + 岔路平台），岔路沿偏移方向延伸，
+  //     中心间距 >= max(ROW_H_GAP, 主半宽+岔半宽+ROW_GAP_MARGIN)，保证同一
+  //     行平台视觉上互不重叠；贴边放不下时退回单平台行（不浪费名额）；
+  //   - 平台中心钳制到 [60+半宽, worldWidth-60-半宽]，平台不会伸出屏幕；
+  //   - 可达性：相邻两行垂直分离 rise（90~190）> 平台高（48），跨行永不相交；
+  //     主平台与上一行同侧平台的水平距离 ≤ offset，offset 上限 400 低于玩家
+  //     跑动跳跃可达距离（rise=90 约 467px、rise=190 约 371px），扣除平台/玩家
+  //     宽度后仍可达，较宽间距需按住 Shift 助跑起跳。
+  //
+  // 跳跃可达估算（玩家 WALK 240px/s / RUN 384px/s，最大起跳 670px/s）：
+  //   落到比起点高 rise 的平台，最远水平距离 ≈ vx·t2（t2 为下落再次穿过该
+  //   高度的时间）：rise=90 → RUN 约 467px，rise=190 → RUN 约 371px。
 
-  // Z/S 形爬塔：用一个「水平方向 + 持续步数」控制走势。方向先随机，持续
-  // 1~3 步后反向（每步反向=Z 字形；同向连续 2~3 步= S 形弧线），碰到世界
-  // 左右边界立即反向，从而在水平方向形成明显的左右回环，而非笔直向上爬。
-  int direction = (genRandomNum(2) == 0) ? -1 : 1;
-  int stepsInDirection = 0;
-  int maxStepsInDirection = 1 + genRandomNum(2); // 每方向持续 1~3 步
+  // 上一行平台中心的水平区间（行间基准）与上一行最低表面顶 y
+  float prevMinC =
+      d->platforms[0].spawnPosition.x + d->platforms[0].size.x * 0.5f;
+  float prevMaxC = prevMinC;
+  float prevTopY =
+      d->platforms[0].spawnPosition.y + d->platforms[0].surfaceOffset;
 
-  for (int i = 1; i < d->platformCount; i++) {
-    float rise = 80.f + genRandomNum((int)(MAX_RISE_SAFE - 80));
-    // 上升越高，水平偏移越收紧（保证跳得上去）
-    float maxDx =
-        MAX_SIDE_OFFSET * (1.f - (rise - 80.f) / (MAX_RISE_SAFE - 80.f));
-    // 水平分量取 maxDx 的较大随机比例（0.45~1.0），配合持续方向形成明显的
-    // Z/S 走势（相对原垂直爬塔大幅增强水平方向随机性）
-    float dx =
-        direction * (0.45f + 0.55f * (float)genRandomNum(100) / 100.f) * maxDx;
+  int i = 1; // 下一个待生成平台下标（platforms[0] 已生成）
+  while (i < d->platformCount) {
+    // 行间垂直上升（90~190，保证始终向上爬升且在跳跃可达内）
+    float rise = MIN_RISE + genRandomNum((int)(MAX_RISE_SAFE - MIN_RISE));
+    // 行间水平偏移：随 rise 升高向 MIN_SIDE_OFFSET 收紧（400→300），方向随机
+    float riseFactor = (rise - MIN_RISE) / (MAX_RISE_SAFE - MIN_RISE);
+    float offset = MIN_SIDE_OFFSET +
+                   (MAX_SIDE_OFFSET - MIN_SIDE_OFFSET) * (1.f - riseFactor);
+    float dir = (genRandomNum(2) == 0) ? -1.f : 1.f;
+    float prevCenter = (prevMinC + prevMaxC) * 0.5f;
+    float rowSpawnY = prevTopY - rise; // 行内平台共用 spawn y（越往上 y 越小）
 
-    float cx = prevTop.x + dx;
-    float cy = prevTop.y - rise; // 越往上 y 越小
-    // 边界钳制：左右不能出世界；触界时标记，稍后强制反向（避免贴墙堆积）
-    bool hitBoundary = false;
-    if (cx < 60.f) {
-      cx = 60.f + genRandomNum(80);
-      hitBoundary = true;
-    }
-    if (cx > worldWidth - 60.f) {
-      cx = worldWidth - 60.f - genRandomNum(80);
-      hitBoundary = true;
-    }
-
-    // 爬塔模式只用小/中平台（Large 太宽，破坏爬塔节奏）
-    PlatformType type =
+    // 本行主平台：先按类型算半宽，再定中心（钳到世界内，含半宽防伸出屏幕）
+    PlatformType mainType =
         (PlatformType)(SMALL + genRandomNum(MEDIUM - SMALL + 1));
-    d->platforms[i] = (Platform){0};
-    InitJumpPlatforms(&d->platforms[i], (Vector2){0.f, 0.f}, type); // 临时位置
-    d->platforms[i].spawnPosition.x =
-        cx - d->platforms[i].size.x * 0.5f; // 中心→左上
-    d->platforms[i].spawnPosition.y = cy;
+    const float mainHalf = PlatformHalfWidth(mainType);
+    const float mainCenter = Clamp(prevCenter + dir * offset, 60.f + mainHalf,
+                                   worldWidth - 60.f - mainHalf);
 
-    // 相邻平台保持一定水平重叠，保证跳跃有落脚点（余量已放宽，水平走势
-    // 更明显，但整体仍在跳跃可达范围内）
-    float prevL = d->platforms[i - 1].spawnPosition.x;
-    float prevR = prevL + d->platforms[i - 1].size.x;
-    if (d->platforms[i].spawnPosition.x + d->platforms[i].size.x <
-        prevL + MIN_SIDE_OVERLAP)
-      d->platforms[i].spawnPosition.x =
-          prevL + MIN_SIDE_OVERLAP - d->platforms[i].size.x;
-    else if (d->platforms[i].spawnPosition.x > prevR - MIN_SIDE_OVERLAP)
-      d->platforms[i].spawnPosition.x = prevR - MIN_SIDE_OVERLAP;
+    // 本行平台类型/中心列表（先算几何，保证同一行平台互不重叠）
+    PlatformType rowType[2];
+    float rowC[2];
+    int rowN = 0;
+    rowType[rowN] = mainType;
+    rowC[rowN] = mainCenter;
+    rowN++;
 
-    prevTop = (Vector2){
-        .x = d->platforms[i].spawnPosition.x + d->platforms[i].size.x * 0.5f,
-        .y = d->platforms[i].spawnPosition.y + d->platforms[i].surfaceOffset,
-    };
-
-    // 持续若干步后反向（Z 字形 / S 形弧线）；触界同样反向
-    stepsInDirection++;
-    if (hitBoundary || stepsInDirection >= maxStepsInDirection) {
-      direction = -direction;
-      stepsInDirection = 0;
-      maxStepsInDirection = 1 + genRandomNum(2);
+    // 岔路平台（可选）：沿偏移方向再放一个，中心间距保证与主平台不重叠
+    int remaining = d->platformCount - i;
+    if (remaining >= 2 && genRandomNum(4) != 0) {
+      PlatformType branchType =
+          (PlatformType)(SMALL + genRandomNum(MEDIUM - SMALL + 1));
+      const float branchHalf = PlatformHalfWidth(branchType);
+      // 中心间距：至少 ROW_H_GAP，且不小于两平台半宽之和 + 净间隙（不重叠）
+      const float needGap = mainHalf + branchHalf + ROW_GAP_MARGIN;
+      const float gap = (needGap > ROW_H_GAP) ? needGap : ROW_H_GAP;
+      const float branchCenter =
+          Clamp(mainCenter + dir * gap, 60.f + branchHalf,
+                worldWidth - 60.f - branchHalf);
+      // 钳制后若仍与主平台重叠（贴边放不下）→ 本行退回单平台，不浪费名额
+      if (fabsf(branchCenter - mainCenter) >= mainHalf + branchHalf + 4.f) {
+        rowType[rowN] = branchType;
+        rowC[rowN] = branchCenter;
+        rowN++;
+      }
     }
+
+    // 生成本行 rowN 个平台（按计算好的类型/中心真正初始化）
+    float rowMinC = 1e9f, rowMaxC = -1e9f;
+    float rowLowestSurface = rowSpawnY; // 该行最低表面顶 y（下一行 rise 基准）
+    for (int k = 0; k < rowN; k++) {
+      d->platforms[i] = (Platform){0};
+      InitJumpPlatforms(&d->platforms[i], (Vector2){0.f, 0.f}, rowType[k]);
+      d->platforms[i].spawnPosition.x = rowC[k] - PlatformHalfWidth(rowType[k]);
+      d->platforms[i].spawnPosition.y = rowSpawnY;
+
+      if (rowC[k] < rowMinC)
+        rowMinC = rowC[k];
+      if (rowC[k] > rowMaxC)
+        rowMaxC = rowC[k];
+      const float surfaceTop = rowSpawnY + d->platforms[i].surfaceOffset;
+      if (surfaceTop > rowLowestSurface)
+        rowLowestSurface = surfaceTop;
+      i++;
+    }
+
+    // 更新上一行基准：中心区间 + 最低表面顶 y（保证下一行从任意平台都能跳达）
+    prevMinC = rowMinC;
+    prevMaxC = rowMaxC;
+    prevTopY = rowLowestSurface;
   }
 
   // 生成红旗
@@ -260,7 +304,7 @@ static void PlatformSceneDraw(GameScene *self) {
   DrawPlayer(&d->cat, d->source);
   for (int i = 0; i < d->enemyCount; i++)
     if (d->enemies[i].isAlive)
-      DrawEnemy(&d->enemies[i], d->enemySource[i]);
+      DrawEnemy(&d->enemies[i], d->enemySource[i], 0.f);
   DrawFlag(&d->flag);
   DrawRectangle(0, d->app->logicHeight - 50, d->app->logicWidth, 50, LIGHTGRAY);
 
@@ -286,17 +330,15 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
     // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
     PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
     if (d->level >= MAX_LEVELS) {
-      // 最终通关：播放最终胜利音效，记录速通最佳时间，经过渡回到开始菜单
-      if (d->app->gameFinishSoundValid)
-        PlaySound(d->app->gameFinishSound);
+      // 最终通关：记录速通最佳时间，经过渡进入通关结算场景
+      // （scene_finish，最终胜利音效由该场景 onEnter 播放）
       SpeedrunFinish((GameApp *)d->app);
-      GameStackReplace(
-          self->owner,
-          TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+      GameStackReplace(self->owner, TransitionSceneCreate(
+                                        d->app, FinishSceneCreate(d->app)));
     } else {
       // 普通通关：播放通关单关音效（scene_battle 不计入），经过渡进入下一关
-      if (d->app->levelFinishSoundValid)
-        PlaySound(d->app->levelFinishSound);
+      GameAppPlaySound(d->app, d->app->levelFinishSound,
+                       d->app->levelFinishSoundValid);
       GameStackReplace(
           self->owner,
           TransitionSceneCreate(d->app, LevelFlowCreateNextScene(
@@ -319,8 +361,8 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
   for (int i = 0; i < d->enemyCount; i++) {
     Enemy *e = &d->enemies[i];
     if (e->isAlive && e->isCountdown && !d->enemyWasCountdown[i]) {
-      if (d->app->meetEnemySoundValid)
-        PlaySound(d->app->meetEnemySound);
+      GameAppPlaySound(d->app, d->app->meetEnemySound,
+                       d->app->meetEnemySoundValid);
     }
     d->enemyWasCountdown[i] = e->isAlive && e->isCountdown;
   }
@@ -346,7 +388,10 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
   d->cat.isOnTheGround = false;
   for (int i = 0; i < d->platformCount; i++)
     PlayerCollision(&d->cat, &d->platforms[i]);
-  GroundCollision(&d->cat);
+  // 地面宽 = logicWidth：与 PlatformSceneDraw 中 DrawRectangle(0, ...,
+  // logicWidth, 50) 一致（此前硬编码 1000
+  // 导致碰撞面超出可视地面，玩家越过右缘仍不掉落）
+  GroundCollision(&d->cat, (float)d->app->logicWidth);
 
   // 掉出底部后回出生平台
   RespawnIfFallen(d, &d->cat);
@@ -360,7 +405,7 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
     UpdateEnemy(e, dt);
     for (int j = 0; j < d->platformCount; j++)
       ePlatformCollision(e, &d->platforms[j]);
-    eGroundCollision(e);
+    eGroundCollision(e, (float)d->app->logicWidth);
 
     Platform *ep = &d->platforms[d->enemyPlatformIndex[i]];
     const float left = ep->spawnPosition.x;

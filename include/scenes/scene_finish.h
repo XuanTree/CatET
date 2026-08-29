@@ -11,8 +11,13 @@
 #define SCENE_FINISH_H
 
 #pragma once
+#include "core/gameapp.h"
+#include "core/gamestack.h"
 
-// 最终通关场景占位头文件：对应 src/scenes/scene_finish.c（空实现）。
-// 保留以匹配 include/game.h 的包含列表；后续实现完成场景时在此补充声明。
+// 创建通关结算场景：当玩家成功通关游戏（第 MAX_LEVELS 关）时由关卡场景
+// 经过渡场景（TransitionScene）进入，显示「Congratulations!」标题与本轮
+// 通关所花费的时间（速通计时，见 systems/speedrun）。
+// 玩家只能选择「回到菜单」（清空场景栈返回开始界面）一项。
+GameScene *FinishSceneCreate(const GameApp *app);
 
-#endif // SCENE_FINISH_H
+#endif // !SCENE_FINISH_H

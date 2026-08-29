@@ -65,8 +65,8 @@ void UpdatePlayer(Player *player, float dt) {
     player->velocity.y = HIT_KNOCKBACK_UP;
     player->isOnTheGround = false;
     // 受伤音效（cat_hit.ogg）：生命值下降瞬间播放一次
-    if (player->app && player->app->catHitSoundValid)
-      PlaySound(player->app->catHitSound);
+    GameAppPlaySound(player->app, player->app->catHitSound,
+                     player->app->catHitSoundValid);
   }
   player->lastHealth = player->health;
 
@@ -77,8 +77,8 @@ void UpdatePlayer(Player *player, float dt) {
     player->isOnTheGround = false;
     InitTimer(&player->jumpHoldTimer); // 记录起跳时刻
     // 跳跃音效（cat_jump.ogg）：每次起跳瞬间播放一次
-    if (player->app && player->app->catJumpSoundValid)
-      PlaySound(player->app->catJumpSound);
+    GameAppPlaySound(player->app, player->app->catJumpSound,
+                     player->app->catJumpSoundValid);
   }
 
   // 按住期间：持续累加蓄力时间，并在上升阶段持续提供向上力
@@ -197,19 +197,24 @@ void DrawPlayer(Player *player, Rectangle source) {
   }
 }
 
-// 纯矩形地面碰撞：地面视为一个静态矩形（与 scene_test 绘制一致，
-// 顶面位于 y = LOGIC_HEIGHT - 50 = 430）。用玩家矩形与地面矩形做
-// AABB 重叠检测（CheckCollisionRecs），重叠时把玩家推出地面：
+// 纯矩形地面碰撞：地面视为一个静态矩形（顶面位于 y = LOGIC_HEIGHT - 50 =
+// 430，高度固定 50）。用玩家矩形与地面矩形做 AABB 重叠检测
+// （CheckCollisionRecs），重叠时把玩家推出地面：
 //   - 从上方向下落到地面顶面 → 站在地面上（isOnTheGround = true）
 //   - 从地面下方顶头（防御性处理）→ 阻止穿入
-void GroundCollision(Player *player) {
+// groundWidth 由调用场景传入，须与各场景绘制的地面宽度一致：例如平台关卡
+// 绘制宽 = logicWidth，测试关卡绘制宽 = 1000。此前硬编码 1000 导致平台关卡
+// 碰撞面比可视地面宽出 (1000 - logicWidth)，玩家向右越过可视地面边缘仍不会
+// 掉落（视觉与碰撞错位）。
+void GroundCollision(Player *player, float groundWidth) {
   if (!player)
     return;
 
-  // 地面矩形：与绘制保持一致（左上角 (0, 430)，宽 1000，高 50）
+  // 地面矩形：宽度取调用方传入值（非法值兜底 1000，与旧行为一致）
   const float groundTop = 480.0f - 50.0f;
+  const float width = (groundWidth > 0.f) ? groundWidth : 1000.0f;
   const Rectangle ground = {
-      .x = 0, .y = groundTop, .width = 1000.0f, .height = 50.0f};
+      .x = 0, .y = groundTop, .width = width, .height = 50.0f};
   const Rectangle playerRect = {
       .x = player->position.x,
       .y = player->position.y,

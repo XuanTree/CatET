@@ -10,9 +10,10 @@
 //   - 关卡类型 1（极速拼写）与 3（平台跳跃）的结合，锁定镜头。
 //   - 中心大平台 + 多个小平台；boss 在屏幕上方区域左右往返飞行，周期性释放
 //     弹幕（BulletPatternFire 随机 pattern），玩家需躲避弹幕（弹幕命中扣血）。
-//   - 屏幕上方掉落字母供玩家拼写；正确拼写扣除 boss 生命值 20%（隐藏暴击
-//     窗口内完成则扣除 25%），拼写错误仅困难难度扣血（简单/普通无惩罚），
-//     拼写后无论对错都重置为下一个拼写。
+//   - 屏幕上方掉落字母供玩家拼写；拼对一个单词（填满全部挖空）才扣除 boss
+//     生命值 20%（整词在隐藏暴击窗口内完成则扣除 25%），填对一个字母不扣血；
+//     拼写错误仅困难难度扣血（简单/普通无惩罚），拼写后无论对错都重置为
+//     下一个拼写。
 //   - boss 生命值归零 → 胜利进入下一关（第 MAX_LEVELS 关则通关回菜单）；
 //     玩家 HP 归零 → 失败。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -364,8 +365,9 @@ static void BossFightUpdateBullets(BossFightSceneData *d, float dt) {
       // 致命一击：本帧扣血到 0 后，下一帧帧首会提前切换到失败场景，等不到
       // UpdatePlayer 的受伤检测，故立即播放受伤音效；非致命由下一帧
       // UpdatePlayer 统一触发（避免同一命中重复播放两次音效）
-      if (player->health <= 0.0f && d->app->catHitSoundValid)
-        PlaySound(d->app->catHitSound);
+      if (player->health <= 0.0f) {
+        GameAppPlaySound(d->app, d->app->catHitSound, d->app->catHitSoundValid);
+      }
       b->isActive = false;
       continue;
     }
@@ -396,19 +398,16 @@ static void BossFightAdvanceNext(BossFightSceneData *d) {
   // 通关 boss 关卡奖励：恢复 20 点固定生命值（上限为最大生命值）
   PlayerHeal(d->cat, BOSS_CLEAR_HEALTH_REWARD);
   if (d->level >= MAX_LEVELS) {
-    // 最终通关（第 MAX_LEVELS 关）：播放最终胜利音效，记录速通最佳时间，
-    // 经过渡回到开始菜单
-    if (d->app->gameFinishSoundValid)
-      PlaySound(d->app->gameFinishSound);
+    // 最终通关（第 MAX_LEVELS 关）：记录速通最佳时间，经过渡进入通关结算
+    // 场景（scene_finish，最终胜利音效由该场景 onEnter 播放）
     SpeedrunFinish((GameApp *)d->app);
-    GameStackReplace(
-        d->owner,
-        TransitionSceneCreate(d->app, StartSceneCreate((GameApp *)d->app)));
+    GameStackReplace(d->owner,
+                     TransitionSceneCreate(d->app, FinishSceneCreate(d->app)));
     return;
   }
   // 普通通关：播放通关单关音效，经过渡进入下一关
-  if (d->app->levelFinishSoundValid)
-    PlaySound(d->app->levelFinishSound);
+  GameAppPlaySound(d->app, d->app->levelFinishSound,
+                   d->app->levelFinishSoundValid);
   GameStackReplace(d->owner, TransitionSceneCreate(
                                  d->app, LevelFlowCreateNextScene(
                                              d->app, d->level, d->difficulty)));
@@ -417,10 +416,22 @@ static void BossFightAdvanceNext(BossFightSceneData *d) {
 // ── Character 组件回调
 // ─────────────────────────────────────────────────────────
 
-// 拼写正确：扣除 boss 生命值（隐藏暴击窗口内完成则暴击扣 25%）；boss 生命值
-// 归零 → 胜利，否则重置为下一个拼写。
+// 拼写正确：只有拼对一个单词（全部挖空填满）才扣除 boss 生命值（隐藏暴击
+// 窗口内完成则暴击扣 25%）；填对一个字母但尚未拼完整词时不扣血，仅清空平台
+// 并掉落下一批继续拼写同一单词。boss 生命值归零 → 胜利，否则重置为下一个单词。
 static void BossFightOnSpellCorrect(void *ctx) {
   BossFightSceneData *d = (BossFightSceneData *)ctx;
+  if (CharacterRemainingBlanks(&d->character) > 0) {
+    // 还有挖空（整词未拼完）：不扣 boss 血，只清空平台上其余字母并掉落下一
+    // 批；暴击窗口继续计时（整词完成才算一次正确拼写）
+    d->character.letterCount = 0;
+    d->character.holdingLetter = false;
+    d->character.heldLetterIndex = -1;
+    d->fallingCount = 0;
+    BossFightSpawnWave(d);
+    return;
+  }
+  // 整词拼写完成：扣除 boss 生命值（整词在隐藏暴击窗口内完成则暴击）
   const int dmg = (d->timeLeft > 0.0f) ? BOSS_HP_DMG_CRIT : BOSS_HP_DMG_NORMAL;
   d->boss->hp -= dmg;
   if (d->boss->hp <= 0) {
@@ -428,17 +439,7 @@ static void BossFightOnSpellCorrect(void *ctx) {
     BossFightAdvanceNext(d);
     return;
   }
-  if (CharacterRemainingBlanks(&d->character) > 0) {
-    // 还有挖空：清空平台上其余字母 + 掉落下一批 + 重置隐藏暴击窗口
-    d->character.letterCount = 0;
-    d->character.holdingLetter = false;
-    d->character.heldLetterIndex = -1;
-    d->fallingCount = 0;
-    d->timeLeft = BOSS_CRIT_WINDOW;
-    BossFightSpawnWave(d);
-    return;
-  }
-  // 全部挖空填满：生成下一个单词（重置拼写）
+  // 生成下一个单词（重置拼写）
   BossFightResetPuzzle(d);
 }
 

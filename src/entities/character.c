@@ -237,8 +237,8 @@ void CharacterUpdate(Character *c, Player *p) {
         c->holdingLetter = true;
         c->heldLetterIndex = i;
         // 拾取音效（pick_letter.ogg）：捡起字母时播放一次
-        if (c->app && c->app->pickLetterSoundValid)
-          PlaySound(c->app->pickLetterSound);
+        GameAppPlaySound(c->app, c->app->pickLetterSound,
+                         c->app->pickLetterSoundValid);
         break;
       }
     }

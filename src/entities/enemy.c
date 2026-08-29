@@ -13,9 +13,9 @@
 // 战斗：触碰后的 1s 定格窗口时长、触发后的冷却时长
 #define ENEMY_BATTLE_DELAY 1.0f
 #define ENEMY_BATTLE_COOLDOWN 2.0f
-// 地面矩形（与 scene_test 绘制 / 玩家 GroundCollision 一致）：顶面 y = 480-50
+// 地面矩形（与玩家 GroundCollision 一致）：顶面 y = 480-50，高度 50；
+// 宽度由调用场景传入（groundWidth），保持与各场景绘制的地面一致。
 #define ENEMY_GROUND_TOP (480.f - 50.f)
-#define ENEMY_GROUND_WIDTH 1000.f
 #define ENEMY_GROUND_HEIGHT 50.f
 
 // 敌人世界坐标矩形（绘制与碰撞统一）
@@ -105,7 +105,7 @@ void UpdateEnemy(Enemy *enemy, float dt) {
   enemy->position.y += enemy->velocity.y * dt;
 }
 
-void DrawEnemy(Enemy *enemy, Rectangle source) {
+void DrawEnemy(Enemy *enemy, Rectangle source, float rotation) {
   if (!enemy || !enemy->isAlive)
     return;
 
@@ -115,14 +115,14 @@ void DrawEnemy(Enemy *enemy, Rectangle source) {
     src.x = source.x + source.width;
     src.width = -source.width;
   }
-  // 绘制尺寸与碰撞 enemy->size 严格一致，避免精灵缩放与碰撞盒错位
   Rectangle dest = {
-      .x = enemy->position.x,
-      .y = enemy->position.y,
+      .x = enemy->position.x + enemy->size.x * 0.5f,
+      .y = enemy->position.y + enemy->size.y * 0.5f,
       .width = enemy->size.x,
       .height = enemy->size.y,
   };
-  DrawTexturePro(enemy->idleTexture, src, dest, (Vector2){0, 0}, 0.f, WHITE);
+  Vector2 origin = {enemy->size.x * 0.5f, enemy->size.y * 0.5f};
+  DrawTexturePro(enemy->idleTexture, src, dest, origin, rotation, WHITE);
 }
 
 // 敌怪与玩家的碰撞：触碰即进入 1s 定格窗口（画面由场景冻结），满 1s 调用
@@ -165,15 +165,17 @@ void ePlayerCollision(Enemy *enemy, Player *player) {
 }
 
 // 敌怪与纯矩形地面的碰撞：与玩家 GroundCollision 使用同一地面矩形
-// （顶面 y = 480 - 50 = 430，宽 1000），重叠时按相对位置 / 速度方向解决：
+// （顶面 y = 480 - 50 = 430，高度 50；宽度由调用场景传入 groundWidth），
+// 重叠时按相对位置 / 速度方向解决：
 //   - 从上方下落到地面顶面 → 落地（isOnTheGround = true）
 //   - 从地面下方顶头（防御性处理）→ 阻止穿入
-void eGroundCollision(Enemy *enemy) {
+void eGroundCollision(Enemy *enemy, float groundWidth) {
   if (!enemy || !enemy->isAlive)
     return;
+  const float width = (groundWidth > 0.f) ? groundWidth : 1000.f;
   const Rectangle ground = {.x = 0,
                             .y = ENEMY_GROUND_TOP,
-                            .width = ENEMY_GROUND_WIDTH,
+                            .width = width,
                             .height = ENEMY_GROUND_HEIGHT};
   const Rectangle enemyRect = EnemyRect(enemy);
   if (!CheckCollisionRecs(enemyRect, ground))

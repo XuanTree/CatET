@@ -127,9 +127,30 @@ def ensure_platform_dir(platform):
     return d
 
 
+def clean_dir(path):
+    """清空指定目录下的所有内容；目录不存在则创建。
+    用于清理 CPack 输出目录（out/package、out/build/linux-release/package），
+    避免其中残留的旧版本安装包被 copy_artifacts 再次复制到产物目录。"""
+    os.makedirs(path, exist_ok=True)
+    for name in os.listdir(path):
+        p = os.path.join(path, name)
+        if os.path.isfile(p) or os.path.islink(p):
+            os.unlink(p)
+        elif os.path.isdir(p):
+            shutil.rmtree(p)
+
+
+def clean_platform_dir(platform):
+    """构建前清空对应平台产物目录，避免旧版本安装包残留导致
+    Windows/、Linux/ 目录中同时存在多个版本的产物。"""
+    d = ensure_platform_dir(platform)
+    clean_dir(d)
+    return d
+
+
 # ── Windows ───────────────────────────────────────────────────────────────────
 def build_windows():
-    ensure_platform_dir("windows")
+    clean_platform_dir("windows")
     print("\n===== [Windows] 构建 + NSIS 打包 =====")
     makensis = find_makensis()
     if not makensis:
@@ -139,6 +160,8 @@ def build_windows():
     run(["cmake", "--preset", "gcc-mingw-release"], cwd=ROOT)
     run(["cmake", "--build", "--preset", "release"], cwd=ROOT)
     pkg = os.path.join(ROOT, "out", "package")
+    # 清空 CPack 输出目录，避免残留的旧版本安装包被复制到 Windows/
+    clean_dir(pkg)
     cmd = ["cpack", "--preset", "nsis", "-B", pkg,
            "-D", "CPACK_NSIS_EXECUTABLE=" + makensis]
     run(cmd, cwd=ROOT)
@@ -153,7 +176,8 @@ def build_windows():
 def pack_linux(build, dest):
     """用 CPack 依次生成 DEB / RPM / TGZ 并复制到 dest；返回成功产物数。"""
     pkgdir = os.path.join(build, "package")
-    os.makedirs(pkgdir, exist_ok=True)
+    # 清空 CPack 输出目录，避免残留的旧版本安装包被复制到 dest
+    clean_dir(pkgdir)
     cfg = os.path.join(build, "CPackConfig.cmake")
     for gen in ("DEB", "RPM", "TGZ"):
         try:
@@ -167,7 +191,7 @@ def pack_linux(build, dest):
 
 
 def build_linux_native():
-    ensure_platform_dir("linux")
+    clean_platform_dir("linux")
     print("\n===== [Linux] 原生构建 + 打包（DEB/RPM/TGZ）=====")
     for t in ("cmake", "gcc", "python3"):
         if not shutil.which(t):
@@ -184,7 +208,7 @@ def build_linux_native():
 
 
 def build_linux_via_wsl():
-    ensure_platform_dir("linux")
+    clean_platform_dir("linux")
     print("\n===== [Linux] 通过 WSL 交叉构建 =====")
     if not wsl_available():
         print("[Linux] 未检测到可用的 WSL。请安装 WSL 并在发行版内装好工具链。")
@@ -217,6 +241,7 @@ def build_linux_via_wsl():
         "cmake -S . -B out/build/linux-release -DCMAKE_BUILD_TYPE=Release "
         "-DFETCHCONTENT_SOURCE_DIR_RAYLIB=\"$RL\" && "
         "cmake --build out/build/linux-release -j$(nproc) && "
+        "rm -rf out/build/linux-release/package && "
         "mkdir -p out/build/linux-release/package Linux && "
         "cpack --config out/build/linux-release/CPackConfig.cmake -G DEB "
         "-B out/build/linux-release/package ; "

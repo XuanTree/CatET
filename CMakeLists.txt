@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CatET VERSION 0.1.0 LANGUAGES C)
+project(CatET VERSION 0.2.0 LANGUAGES C)
 
 # Generate compile_commands.json for clangd / language servers
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -134,16 +134,62 @@ endif()
 # 目标：生成“可独立运行的安装程序”，而不是内含 exe+assets 的普通压缩包：
 # - Windows → NSIS 安装向导（.exe setup，含开始菜单快捷方式与卸载程序）
 # - macOS   → .app Bundle + DMG 拖拽安装镜像
-# - Linux   → DEB 安装包（含桌面快捷方式）+ STGZ 自解压安装脚本
+# - Linux   → DEB / RPM / TGZ 安装包
 # ═══════════════════════════════════════════════════════════════════════════════
 set(CPACK_PACKAGE_NAME "CatET")
 set(CPACK_PACKAGE_VENDOR "XuanTree")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "CatET 单词跑酷小游戏")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "CatET")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "CatET")
+
+# ── 平台与架构标识（统一安装包命名）──────────────────────────────────────
+# 平台/架构由当前工具链与宿主推导，而非硬编码，避免产物命名不规范：
+# 文件名统一为  CatET-<平台>-<架构>-<版本>
+# 例：Windows → CatET-windows-x64-0.2.0.exe
+# Linux   → CatET-linux-x64-0.2.0.deb / .rpm / .tar.gz
+if(WIN32)
+    set(CATET_PLATFORM "Windows")
+elseif(APPLE)
+    set(CATET_PLATFORM "MacOS")
+else()
+    set(CATET_PLATFORM "Linux")
+endif()
+
+# CMAKE_SYSTEM_PROCESSOR 在 MinGW(UCRT64) 下通常为 AMD64、Linux 下为
+# x86_64/aarch64，这里归一化为短名用于文件名。
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+    set(CATET_ARCH "x64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+    set(CATET_ARCH "arm64")
+else()
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CATET_ARCH)
+endif()
+
+# DEB/RPM 安装包内的架构元数据必须使用发行版规范值（amd64 / x86_64 /
+# arm64 / aarch64），与文件名的短名（x64）分开，确保包管理器能正确识别
+# 可安装目标架构。
+if(CATET_ARCH STREQUAL "x64")
+    set(CATET_DEB_ARCH "amd64")
+    set(CATET_RPM_ARCH "x86_64")
+elseif(CATET_ARCH STREQUAL "arm64")
+    set(CATET_DEB_ARCH "arm64")
+    set(CATET_RPM_ARCH "aarch64")
+else()
+    set(CATET_DEB_ARCH "${CATET_ARCH}")
+    set(CATET_RPM_ARCH "${CATET_ARCH}")
+endif()
+
+# 覆盖各生成器默认命名（win64 / Linux / Debian / RPM 各自规则），
+# 统一为 CatET-<平台>-<架构>-<版本>。
+set(CPACK_PACKAGE_FILE_NAME
+    "CatET-${CATET_PLATFORM}-${CATET_ARCH}-v${PROJECT_VERSION}")
+
+# 安装程序/安装包中展示的许可协议文件
+# （NSIS 向导的"许可证"页、DEB/RPM 的 license 元数据均取自这里）
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 if(WIN32)
     # ── Windows：NSIS 标准安装向导 ──────────────────────────────────────────
@@ -151,7 +197,7 @@ if(WIN32)
     set(CPACK_NSIS_PACKAGE_NAME "CatET")
     set(CPACK_NSIS_DISPLAY_NAME "CatET")
     set(CPACK_NSIS_INSTALL_ROOT "$PROGRAMFILES64")
-    set(CPACK_NSIS_MENU_LINKS "CatET.exe" "运行 CatET")
+    set(CPACK_NSIS_MENU_LINKS "CatET.exe" "CatET")
     set(CPACK_NSIS_INSTALLED_ICON_NAME "CatET.exe")
     set(CPACK_NSIS_MODIFY_PATH OFF)
 
@@ -180,6 +226,9 @@ else()
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "XuanTree <xuantree@example.com>")
     set(CPACK_DEBIAN_PACKAGE_SECTION "games")
 
+    # 包内架构元数据使用规范值（amd64 / arm64），与文件名短名（x64）区分
+    set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "${CATET_DEB_ARCH}")
+
     # raylib 为静态链接，不需要 dpkg-shlibdeps 分析动态库依赖
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 
@@ -188,6 +237,9 @@ else()
     set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")
     set(CPACK_RPM_PACKAGE_GROUP "Amusements/Games")
     set(CPACK_RPM_PACKAGE_VENDOR "XuanTree")
+
+    # 包内架构元数据使用规范值（x86_64 / aarch64），与文件名短名（x64）区分
+    set(CPACK_RPM_PACKAGE_ARCHITECTURE "${CATET_RPM_ARCH}")
 
     # 桌面快捷方式
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/CatET.desktop"

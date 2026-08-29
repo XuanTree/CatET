@@ -9,6 +9,9 @@ void Run() {
   GameApp app = GameAppInit(LOGIC_WIDTH, LOGIC_HEIGHT, "CatET");
   // 隐式全局计时器初始化：读取已持久化的最佳通关时间供开始菜单显示
   SpeedrunInit(&app);
+  // 音频总开关初始化：读取持久化的音效/音乐设置（无存档时保持默认开启）
+  GameAppSetSoundEnabled(&app, SaveDataLoadSoundEnabled());
+  GameAppSetMusicEnabled(&app, SaveDataLoadMusicEnabled());
 
   // 创建场景栈并压入初始场景：开始菜单（Play 后经栈替换进入测试关卡）
   GameStack *stack = GameStackCreate();
