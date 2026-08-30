@@ -7,6 +7,11 @@
 void Run() {
   // 框架初始化：窗口、图标、音频、固定分辨率渲染目标
   GameApp app = GameAppInit(LOGIC_WIDTH, LOGIC_HEIGHT, "CatET");
+  // 本局错词本/间隔重复抽词（全局、跨关卡共享；新游戏在开始菜单重置）。
+  // static：Run 只调用一次，study 随进程存活；GameApp 仅持指针不拥有。
+  static StudyTracker s_study;
+  StudyInit(&s_study, NULL);
+  app.study = &s_study;
   // 隐式全局计时器初始化：读取已持久化的最佳通关时间供开始菜单显示
   SpeedrunInit(&app);
   // 音频总开关初始化：读取持久化的音效/音乐设置（无存档时保持默认开启）

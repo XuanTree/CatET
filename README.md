@@ -42,18 +42,21 @@ The game is still in development, but the core loop is fully playable.
 
 | Difficulty | Word pool | Notes |
 |---|---|---|
-| **Easy** | 100% CET-4 | Baseline |
-| **Normal** | ~60% CET-4 + ~40% CET-6 | Mixed pool |
-| **Hard** | 100% CET-6 | Max HP +25%, spelling error penalty +50%, bullet damage +100% per tier |
+| **Easy** | 100% CET-4 | max HP 100, battle penalty 20, bullets 4-5/wave |
+| **Normal** | ~60% CET-4 + ~40% CET-6 | max HP 100, battle penalty 25, bullets 6-7/wave |
+| **Hard** | 100% CET-6 | max HP 125, battle penalty 30, bullets 8-9/wave |
 
-> Each difficulty tier above the previous one raises **max HP +25%**, **spelling-error penalty +50%**, and **bullet damage +100%**.
+> Hard raises **max HP to 125 (+25%)** and **spelling-error penalties** (battle/boss 30;
+> other modes 15) and increases **bullet count/waves** (3~8 damage is flat on all
+> difficulties). All time-limit/fall penalties are 15 HP. Full numbers live in
+> `include/core/game_config.h`.
 
 ### Level types
 
 - **Classic Platformer** *(~35%)* — jump across platforms and reach the red flag to clear the level. Touch an enemy to enter a battle scene.
 - **Tower Climb** *(~15%, platformer variant)* — climb a procedurally stacked tower of platforms toward the flag at the top.
-- **Speed Spelling** *(~30%)* — a 40-second timer; catch falling letters and fill the blank of a partially spelled word using the Chinese/part-of-speech hint.
-- **Maze Puzzle** *(~20%)* — a DFS-generated 2D maze (90-second limit); hunt for the correct letters in dead-ends and bring them back to the central spelling area.
+- **Speed Spelling** *(~30%)* — a 15-second timer; catch falling letters and fill the blank of a partially spelled word using the Chinese/part-of-speech hint. Timeout costs HP and restarts the timer in place.
+- **Maze Puzzle** *(~20%)* — a DFS-generated 2D maze (60-second limit); hunt for the correct letters in dead-ends and bring them back to the central spelling area.
 - **Boss Fight** *(every 20th level)* — avoid the boss's bullet patterns while spelling words to deplete its HP; a quick spelling grants a critical (25% instead of 20%). Clearing level 100 means **victory**.
 
 ### Battle scene
@@ -61,7 +64,7 @@ The game is still in development, but the core loop is fully playable.
 On a platformer level, touching an enemy triggers a **turn-based battle**:
 
 - **Player turn** — three words are shown; pick the one matching the given part-of-speech + Chinese meaning. A wrong pick costs HP.
-- **Enemy turn** — the enemy (frozen at the top of the screen) fires a bullet pattern; dodge the bullets. Every bullet hit deals 3–9 random damage (with brief invincibility).
+- **Enemy turn** — the enemy (frozen at the top of the screen) fires a bullet pattern; dodge the bullets. Every bullet hit deals 3–8 random damage (with brief invincibility).
 - Win by answering **3 times correctly**; the defeated enemy is removed when you return to the level.
 
 ### Progression & records

@@ -243,7 +243,9 @@ int BulletPatternFire(Bullet *bullets, int maxBullets, BulletPattern pattern,
   return spawned;
 }
 
-// 弹幕浮动伤害：返回 [3, 9] 的随机伤害值
+// 弹幕浮动伤害：返回 [BATTLE_BULLET_DMG_MIN, BATTLE_BULLET_DMG_MAX] 的随机
+// 伤害值（默认 3~8，见 core/game_config.h；Hard 波次多，上限 9→8 补偿）
 float BulletRollDamage(void) {
-  return 3.0f + (float)genRandomNum(7); // 3..9
+  const int range = (int)(BATTLE_BULLET_DMG_MAX - BATTLE_BULLET_DMG_MIN) + 1;
+  return BATTLE_BULLET_DMG_MIN + (float)genRandomNum(range);
 }

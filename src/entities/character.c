@@ -8,6 +8,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 #define CHARACTER_DEFAULT_PICKUP_RADIUS 22.0f
+// 拼错复习横幅显示时长（秒，最后 1 秒淡出）
+#define CHARACTER_REVIEW_TIME 3.0f
 
 // 玩家矩形（世界坐标，绘制与碰撞统一）
 static Rectangle CharacterPlayerRect(const Player *p) {
@@ -46,16 +48,28 @@ const char *CharacterSetupPuzzle(Character *c) {
   if (!c)
     return NULL;
 
-  // 抽取长度合适的单词（3~12），最多尝试 200 次
+  // 抽取长度合适的单词（3~12）。若绑定了错词本（study），优先用间隔重复
+  // 抽词（排除当前词避免立即重复）；抽到的词长度不合适则回退随机。
   const WordEntry *entry = NULL;
-  for (int i = 0; i < 200; i++) {
-    const WordEntry *cand = WordsBankPickRandom(&c->bank);
-    if (!cand)
-      break;
-    size_t len = strlen(cand->word);
-    if (len >= 3 && len <= 12) {
-      entry = cand;
-      break;
+  if (c->study) {
+    entry = StudyPickWord(c->study,
+                          (c->entry.word[0] != '\0') ? c->entry.word : NULL);
+    if (entry) {
+      const size_t slen = strlen(entry->word);
+      if (slen < 3 || slen > 12)
+        entry = NULL;
+    }
+  }
+  if (!entry) {
+    for (int i = 0; i < 200; i++) {
+      const WordEntry *cand = WordsBankPickRandom(&c->bank);
+      if (!cand)
+        break;
+      size_t len = strlen(cand->word);
+      if (len >= 3 && len <= 12) {
+        entry = cand;
+        break;
+      }
     }
   }
   if (entry) {
@@ -279,6 +293,10 @@ void CharacterUpdate(Character *c, Player *p) {
     }
     c->holdingLetter = false;
     c->heldLetterIndex = -1;
+    // 学习机制：标记答对（清除错词记录）并关闭复习横幅
+    if (c->study)
+      StudyMarkCorrect(c->study, &c->entry);
+    c->reviewTimer = 0.0f;
     if (c->onSpellCorrect)
       c->onSpellCorrect(c->eventCtx);
   } else {
@@ -286,6 +304,12 @@ void CharacterUpdate(Character *c, Player *p) {
     held->isPickedUp = false;
     c->holdingLetter = false;
     c->heldLetterIndex = -1;
+    // 学习机制：标记拼错并记录复习词条。须在 onSpellWrong 之前记录，
+    // 因为场景回调可能重置谜题覆盖 entry。
+    if (c->study)
+      StudyMarkWrong(c->study, &c->entry, c->study->currentLevel);
+    c->reviewEntry = c->entry;
+    c->reviewTimer = CHARACTER_REVIEW_TIME;
     if (c->onSpellWrong)
       c->onSpellWrong(c->eventCtx);
   }
@@ -338,4 +362,36 @@ void CharacterDrawSpellHint(const Character *c, const GameApp *app) {
       app, dropHint,
       (int)(c->wordPlatform.x + c->wordPlatform.width * 0.5f - dhW * 0.5f),
       (int)(c->wordPlatform.y - dhSize - 8), dhSize, GREEN);
+}
+
+// 每帧递减拼错复习横幅计时（暂停时 dt=0 自然冻结）
+void CharacterUpdateReview(Character *c, float dt) {
+  if (!c || c->reviewTimer <= 0.0f)
+    return;
+  c->reviewTimer -= dt;
+  if (c->reviewTimer < 0.0f)
+    c->reviewTimer = 0.0f;
+}
+
+// 绘制拼错复习横幅：居中偏上，白底黑字 + 绿色边框，随剩余时间淡出。
+// 内容：正确拼写 + 词性 + 中文释义（学习机制：拼错即复习）。
+void CharacterDrawReviewBanner(const Character *c, const GameApp *app) {
+  if (!c || !app || c->reviewTimer <= 0.0f)
+    return;
+  const int screenW = app->logicWidth;
+  char line[384];
+  snprintf(line, sizeof(line), "正确：%s  (%s %s)", c->reviewEntry.word,
+           c->reviewEntry.pos, c->reviewEntry.meaning);
+  const int fs = 18;
+  const int tw = GameAppMeasureText(app, line, fs);
+  const float pad = 14.0f;
+  const float bw = (float)tw + pad * 2.0f;
+  const float bh = (float)fs + 20.0f;
+  const float bx = ((float)screenW - bw) * 0.5f;
+  const float by = 86.0f;
+  const float alpha = (c->reviewTimer < 1.0f) ? c->reviewTimer : 1.0f;
+  DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, Fade(WHITE, alpha * 0.92f));
+  DrawRectangleLines((int)bx, (int)by, (int)bw, (int)bh, Fade(GREEN, alpha));
+  GameAppDrawText(app, line, (int)(bx + pad), (int)(by + 10.0f), fs,
+                  Fade(BLACK, alpha));
 }

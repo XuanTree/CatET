@@ -46,6 +46,7 @@
 #include "systems/level_flow.h"
 #include "systems/save_data.h"
 #include "systems/speedrun.h"
+#include "systems/study_tracker.h"
 #include "systems/words_loader.h"
 
 // ─── entities：实体层（依赖 tools / systems；组内顺序无关）───────────────

@@ -30,9 +30,8 @@ typedef struct TestData {
 #define FALL_RESPAWN_MARGIN 400.0f
 
 // 关卡限时：玩法一（极速拼写）由本场景暂代，限时 40 秒
+// （超时惩罚统一用 TIME_PENALTY，见 core/game_config.h）
 #define TEST_TIME_LIMIT 40.0f
-// 限时倒计时归零扣除的生命值（并重置倒计时，给玩家继续本关的机会）
-#define TEST_TIME_PENALTY 20.0f
 
 // 可站立着陆表面：地面矩形 + 各平台顶面（水平中心 + 顶面 y）
 typedef struct LandingSurface {
@@ -89,8 +88,8 @@ static void RespawnIfFallen(TestData *d, Player *player) {
   player->velocity = (Vector2){0.0f, 0.0f};
   player->isOnTheGround = true;
 
-  // 掉落惩罚：每次掉出屏幕被传送回平台时，扣除最大生命值的 20%（下限 0）
-  player->health -= player->maxHealth * 0.2f;
+  // 掉落惩罚：每次掉出屏幕被传送回平台时，扣除最大生命值的 15%（下限 0）
+  player->health -= player->maxHealth * FALL_PENALTY_RATIO;
   if (player->health < 0.0f)
     player->health = 0.0f;
 }
@@ -113,9 +112,13 @@ static void TestEnter(GameScene *self) {
   d->cat = (Player){0};
   InitPlayer(&d->cat);
   d->cat.app = d->app; // 注入音频宿主（受伤/跳跃音效）
+  // 按难度应用最大生命值（Easy/Normal=100，Hard=125）
+  PlayerApplyDifficulty(&d->cat, d->difficulty);
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f) {
     d->cat.health = d->app->playerHealth;
+  } else {
+    d->cat.health = d->cat.maxHealth;
   }
   d->cat.lastHealth = d->cat.health; // 同步受伤检测基准，避免进场误触发
   d->platform = (Platform){0};
@@ -158,8 +161,8 @@ static void TestUpdate(GameScene *self, float dt) {
 
   // 触碰终点小红旗 → 通关：经过渡场景进入下一关（类型按权重刷新）
   if (FlagCheckCollision(&d->flag, PlayerRect(&d->cat))) {
-    // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
-    PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
+    // 通关奖励：恢复生命值（随关卡递增，上限为最大生命值）
+    PlayerHeal(&d->cat, ClearHealthReward(d->level));
     if (d->level >= MAX_LEVELS) {
       // 最终通关（第 MAX_LEVELS 关）：记录速通最佳时间，经过渡进入通关结算
       // 场景（scene_finish，最终胜利音效由该场景 onEnter 播放）
@@ -181,7 +184,7 @@ static void TestUpdate(GameScene *self, float dt) {
   // 关卡限时（40 秒）：倒计时归零扣血并重置（给玩家继续本关的机会）
   d->timeLeft -= dt;
   if (d->timeLeft <= 0.0f) {
-    d->cat.health -= TEST_TIME_PENALTY;
+    d->cat.health -= TIME_PENALTY;
     if (d->cat.health < 0.0f)
       d->cat.health = 0.0f;
     d->timeLeft = TEST_TIME_LIMIT;

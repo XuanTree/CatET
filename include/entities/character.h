@@ -17,6 +17,9 @@
 #include <raylib.h>
 #include <stdbool.h>
 
+// 前置声明
+typedef struct StudyTracker StudyTracker;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 可复用的「字母拾取 + 拼写检查」组件（实体层）：
 //   封装词库谜题（抽词/挖空）、字母实体、Z 键拾取/放下、拼写平台判定与
@@ -77,6 +80,14 @@ typedef struct Character {
   CharacterEvent onSpellCorrect; // 拼写正确事件（如切换下一关）
   CharacterEvent onSpellWrong;   // 拼写错误事件（如扣血）
   void *eventCtx;                // 传给事件回调的上下文
+
+  // 学习机制（阶段1B）：可选绑定的错词本/间隔重复抽词（NULL 时禁用）。
+  // 绑定后 CharacterSetupPuzzle 用它抽词，拼写正确/错误自动调用标记。
+  StudyTracker *study;
+
+  // 拼错复习反馈：最近拼错词条 + 剩余展示时间（>0 时绘制复习横幅）。
+  WordEntry reviewEntry;
+  float reviewTimer;
 } Character;
 
 // 初始化组件（清零状态、复位持有、默认键/半径）。
@@ -128,5 +139,12 @@ void CharacterDrawHeld(const Character *c, const GameApp *app, const Player *p);
 
 // 在拼写平台上方绘制 "SPELL HERE" 提示。
 void CharacterDrawSpellHint(const Character *c, const GameApp *app);
+
+// 每帧递减拼错复习横幅计时（拼写类场景在 Update 调用，dt=0 时暂停）。
+void CharacterUpdateReview(Character *c, float dt);
+
+// 绘制拼错复习横幅（居中偏上：正确拼写 + 词性 + 中文释义），随 timer 淡出。
+// reviewTimer <= 0 时不绘制；复习横幅只在拼写类场景（拼写/迷宫/Boss）显示。
+void CharacterDrawReviewBanner(const Character *c, const GameApp *app);
 
 #endif // CHARACTER_H

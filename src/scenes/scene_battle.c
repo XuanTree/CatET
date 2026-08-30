@@ -12,13 +12,15 @@
 //   - 敌怪回合：敌怪先说话（对话框逐字输出，X 可跳过），停顿 0.30s（期间敌怪
 //     原位置快速旋转一周作蓄力提示）后随机选一种弹幕 pattern（共 10 种）发射，
 //     玩家可在两个小平台上移动躲避；所有弹幕消失后回到玩家回合。
-//   胜利条件 = 答对 totalRounds（1~4）个单词（docs：拼写正确一定数量后进入
-//   下一关）：以玩家回合为主，最后一次答对即立即胜利，不再等敌怪释放完最后
-//   一波攻击。胜利后画面停顿 0.8s（预留胜利音效）、
+//   胜利条件 = 答对 totalRounds 个单词（按难度收窄：easy 1~3 / normal 2~4 /
+//     hard 2~4，见 BattleEnter）：以玩家回合为主，最后一次答对即立即胜利，不再
+//     等敌怪释放完最后一波攻击。胜利后画面停顿 0.8s（预留胜利音效）、
 //   enemy->isAlive=false（“删除该敌怪”），再经淡出转场 Pop 回平台关卡；
 //   玩家 HP 归零（拼写错误或弹幕命中）：失败，Replace 到 FailScene。
-//   难度每提高一档：拼写错误惩罚 +50%、弹幕伤害 +100%（docs 玩法说明）。
-//   （玩家最大生命值 +25%/档为全局开局加成，不属于战斗场景职责，未在此处理）
+//   难度影响（2026-08 校核，见 core/game_config.h）：拼写错误惩罚 easy 20 /
+//   normal 25 / hard 30；弹幕伤害 3~8 浮动、不随难度缩放；弹幕数量与波次随
+//   难度递增。（玩家最大生命值 Hard=125 = 基础 +25%，由 PlayerApplyDifficulty
+//   在关卡 Enter 应用，不属于战斗场景职责）
 // ─────────────────────────────────────────────────────────────────────────────
 
 // C语言真是本质宏孩儿啊
@@ -28,18 +30,21 @@
 #define BATTLE_MAX_BULLETS 24 // 弹幕数组上限
 #define BATTLE_VOLLEY_BASE 4  // 弹幕数量下限（每难度 +2）
 #define BATTLE_VOLLEY_RANDOM_EXTRA                                             \
-  2 // 弹幕数量随机增量（在 [lo, lo+extra] 内随机）
-#define BATTLE_BULLET_SPEED 274.f      // 弹幕飞行速度（世界坐标/秒）
-#define BATTLE_WRONG_PENALTY_BASE 20.f // 基础拼写错误惩罚（×1.5^难度）
+  1 // 弹幕数量随机增量（在 [lo, lo+extra] 内随机：easy 4-5 / normal 6-7 /
+    // hard 8-9，见 game_config）
+#define BATTLE_BULLET_SPEED 274.f // 弹幕飞行速度（世界坐标/秒）
+// 拼写错误惩罚按难度取值，见 game_config 的 BATTLE_WRONG_PENALTY_EASY/
+// NORMAL/HARD（easy 20 / normal 25 / hard 30）
 #define BATTLE_GRAVITY 980.f  // 与 player.c GRAVITY 一致（回合内仅下落用）
 #define BATTLE_GROUND_H 50    // 地面高度（与各关卡一致，顶面 y=480-50）
 #define BATTLE_ENEMY_TOP 20.f // 敌怪固定于屏幕最上方
 #define BATTLE_SMALL_Y1 215   // 两个小平台固定高度（x 随机）
 #define BATTLE_SMALL_Y2 335   // 两个小平台固定高度（x 随机）
 #define BATTLE_PLAT_MARGIN 40 // 平台距屏幕边缘的最小间距
-// 胜利所需答对单词数随机（1~4，docs：拼写正确一定数量后进入下一关）
-#define BATTLE_ROUNDS_MIN 1   // 所需答对单词数下限
-#define BATTLE_ROUNDS_MAX 4   // 所需答对单词数上限
+// 胜利所需答对单词数随机（docs：拼写正确一定数量后进入下一关）。
+// 具体区间按难度收窄（easy 1~3 / normal 2~4 / hard 2~4），见 BattleEnter。
+#define BATTLE_ROUNDS_MIN 1   // 所需答对单词数通用下限
+#define BATTLE_ROUNDS_MAX 4   // 所需答对单词数通用上限
 #define BATTLE_WIN_DELAY 0.8f // 胜利后画面停顿时长（预留胜利音效播放窗口）
 // 敌怪说话机制（dialogue 系统，见 dialogue.h）：
 #define BATTLE_DIALOGUE_CHAR_TIME 0.04f // 逐字输出的每字间隔（秒，较快吐字）
@@ -114,7 +119,7 @@ typedef struct BattleSceneData {
   int answerIndex;      // 正确单词在 options 中的下标
   int selectIndex;      // 玩家当前选中的选项下标
 
-  // 按难度预计算的伤害/惩罚（避免逐帧 powf）；弹幕为浮动伤害 3~9，
+  // 按难度预计算的伤害/惩罚；弹幕为浮动伤害 3~8（game_config），
   // 在 FireVolley 发射后逐颗随机，不再按难度预计算
   float wrongPenalty;
 
@@ -135,9 +140,48 @@ typedef struct BattleSceneData {
 
 // ── 三选一单词 ─────────────────────────────────────────────────────────────
 
+// 高质量干扰词：与答案词「词性相同」且「长度相近」（|len 差| <= 2），
+// 让三选一真正考验对释义的理解，而非词性/拼写表面特征。
+// 用多轮随机采样（不遍历全表，词库 7000+ 词，采样 4×40 次足够且快速）；
+// 采样未命中返回 NULL，调用方回退纯随机。used[0..usedCount) 为已选干扰词，
+// 避免重复。
+static const WordEntry *PickQualityDistractor(const WordsBank *bank,
+                                              const WordEntry *ans,
+                                              const WordEntry *const *used,
+                                              int usedCount) {
+  if (!bank || bank->count <= 0 || !ans)
+    return NULL;
+  const int ansLen = (int)strlen(ans->word);
+  for (int round = 0; round < 4; round++) {
+    for (int i = 0; i < 40; i++) {
+      const WordEntry *w = WordsBankPickRandom(bank);
+      if (!w || strcmp(w->word, ans->word) == 0)
+        continue;
+      // 同词性且长度相近
+      if (strcmp(w->pos, ans->pos) != 0)
+        continue;
+      const int len = (int)strlen(w->word);
+      if (abs(len - ansLen) > 2)
+        continue;
+      bool dup = false;
+      for (int k = 0; k < usedCount; k++) {
+        if (used[k] && strcmp(w->word, used[k]->word) == 0) {
+          dup = true;
+          break;
+        }
+      }
+      if (dup)
+        continue;
+      return w;
+    }
+  }
+  return NULL;
+}
+
 // 从词库抽取答案词与两个不同的干扰词，洗牌放入 options[3] 并记录答案下标。
 // 词库为空/单词不足时用兜底词条（防御，保证场景仍可运行，与 Character 的
-// "cat" 兜底思路一致）。
+// "cat" 兜底思路一致）。干扰词优先「同词性 +
+// 长度相近」（PickQualityDistractor）， 采样不足时回退纯随机。
 static void SetupChoices(BattleSceneData *d) {
   static const WordEntry kFallback[3] = {
       {"cat", "n. 猫", "n."},
@@ -150,9 +194,18 @@ static void SetupChoices(BattleSceneData *d) {
   if (!ans)
     ans = &kFallback[0];
 
-  // 两个与答案不同的干扰词（词库不足时用兜底补齐，保证必有 3 个选项）
+  // 两个与答案不同的干扰词：优先高质量干扰词（同词性、长度相近），
+  // 采样不足时回退纯随机（词库不足时用兜底补齐，保证必有 3 个选项）
   const WordEntry *dist[2] = {&kFallback[1], &kFallback[2]};
   int got = 0;
+  // 第一轮：尝试高质量干扰词（同词性 + 长度差 <= 2）
+  while (got < 2) {
+    const WordEntry *q = PickQualityDistractor(&d->bank, ans, dist, got);
+    if (!q)
+      break;
+    dist[got++] = q;
+  }
+  // 第二轮：回退纯随机补齐剩余干扰词
   int guard = 0;
   while (got < 2 && guard < 300) {
     guard++;
@@ -569,17 +622,30 @@ static void BattleEnter(GameScene *self) {
     relPath = "assets/words/CET6.txt";
   WordsBankLoadEmbedded(&d->bank, relPath);
 
-  // 难度影响：拼写错误惩罚 ×1.5^d（docs 玩法说明）；弹幕为浮动伤害 3~9，
-  // 在 FireVolley 发射时逐颗随机，不随难度缩放
+  // 难度影响：拼写错误惩罚按难度取值（easy 20 / normal 25 / hard 30，见
+  // game_config）；弹幕为浮动伤害 3~8，在 FireVolley 发射时逐颗随机，
+  // 不随难度缩放
+  static const float kWrongPenalty[3] = {BATTLE_WRONG_PENALTY_EASY,
+                                         BATTLE_WRONG_PENALTY_NORMAL,
+                                         BATTLE_WRONG_PENALTY_HARD};
   d->wrongPenalty =
-      BATTLE_WRONG_PENALTY_BASE * powf(1.5f, (float)d->difficulty);
+      kWrongPenalty[(d->difficulty >= 0 && d->difficulty < 3) ? d->difficulty
+                                                              : 0];
 
   // 初始化战斗状态：从玩家回合开始
   d->phase = BATTLE_PHASE_PLAYER_TURN;
   d->lastResult = BATTLE_RESULT_NONE;
-  // 本场战斗胜利所需答对单词数（小怪强弱不一：1~4 个）
-  d->totalRounds = BATTLE_ROUNDS_MIN +
-                   genRandomNum(BATTLE_ROUNDS_MAX - BATTLE_ROUNDS_MIN + 1);
+  // 本场战斗胜利所需答对单词数（小怪强弱不一；按难度收窄随机区间，降低
+  // 单场强度方差：easy 1~3，normal/hard 2~4）
+  int rMin = BATTLE_ROUNDS_NORMAL_MIN, rMax = BATTLE_ROUNDS_NORMAL_MAX;
+  if (d->difficulty <= 0) {
+    rMin = 1;
+    rMax = BATTLE_ROUNDS_EASY_MAX;
+  } else if (d->difficulty >= 2) {
+    rMin = BATTLE_ROUNDS_HARD_MIN;
+    rMax = BATTLE_ROUNDS_HARD_MAX;
+  }
+  d->totalRounds = rMin + genRandomNum(rMax - rMin + 1);
   d->correctCount = 0;
   d->winTimer = BATTLE_WIN_DELAY;
   d->winSoundPlayed = false;

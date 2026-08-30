@@ -20,8 +20,8 @@
 #define ROW_H_GAP 120.f       // 同一行主/岔路平台中心间距的下限（岔路宽度）
 // 中心间距在“两平台半宽之和”之外追加的净间隙，保证同一行平台视觉上不重叠
 #define ROW_GAP_MARGIN 16.f
-#define PLATFORM_TIME_LIMIT 40.0f   // 关卡限时 40 秒
-#define PLATFORM_TIME_PENALTY 20.0f // 倒计时归零扣血
+#define PLATFORM_TIME_LIMIT                                                    \
+  40.0f // 关卡限时 40 秒（超时惩罚统一用 TIME_PENALTY）
 
 // 平台世界半宽：platform_1/2/3.png 逻辑像素宽分别为 32/64/128，乘 GAME_SCALE 得
 // 世界宽（SMALL=96、MEDIUM=192、LARGE=384）。布局阶段先按类型算尺寸（而不必
@@ -84,9 +84,14 @@ static void PlatformSceneEnter(GameScene *self) {
   InitPlayer(&d->cat);
   d->cat.app = d->app; // 注入音频宿主（受伤/跳跃音效）
 
-  // 继承上一关的生命值数据
+  // 按难度应用最大生命值（Easy/Normal=100，Hard=125）
+  PlayerApplyDifficulty(&d->cat, d->difficulty);
+
+  // 继承上一关的生命值数据；新游戏（playerHealth=0）从满血开始
   if (d->app->playerHealth > 0.f) {
     d->cat.health = d->app->playerHealth;
+  } else {
+    d->cat.health = d->cat.maxHealth;
   }
   d->cat.lastHealth = d->cat.health;         // 同步受伤检测基准，避免进场误触发
   int baseCount = (d->difficulty == 0) ? 8 : // 简单
@@ -327,8 +332,8 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
   Rectangle playerRect = (Rectangle){d->cat.position.x, d->cat.position.y,
                                      d->cat.size.x, d->cat.size.y};
   if (FlagCheckCollision(&d->flag, playerRect)) {
-    // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
-    PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
+    // 通关奖励：恢复生命值（随关卡递增，上限为最大生命值）
+    PlayerHeal(&d->cat, ClearHealthReward(d->level));
     if (d->level >= MAX_LEVELS) {
       // 最终通关：记录速通最佳时间，经过渡进入通关结算场景
       // （scene_finish，最终胜利音效由该场景 onEnter 播放）
@@ -350,7 +355,7 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
   // 关卡限时：倒计时归零扣血并重置（给玩家继续本关的机会）
   d->timeLeft -= dt;
   if (d->timeLeft <= 0.f) {
-    d->cat.health -= PLATFORM_TIME_PENALTY;
+    d->cat.health -= TIME_PENALTY;
     if (d->cat.health < 0.f)
       d->cat.health = 0.f;
     d->timeLeft = PLATFORM_TIME_LIMIT;
@@ -455,7 +460,7 @@ static void RespawnIfFallen(PlatformSceneData *d, Player *player) {
                 groundTop - player->size.y};
   player->velocity = (Vector2){0.f, 0.f};
   player->isOnTheGround = true;
-  player->health -= player->maxHealth * 0.2f; // 掉落惩罚
+  player->health -= player->maxHealth * FALL_PENALTY_RATIO; // 掉落惩罚
   if (player->health < 0.f)
     player->health = 0.f;
 }

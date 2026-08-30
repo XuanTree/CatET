@@ -63,6 +63,12 @@ void GroundCollision(Player *player, float groundWidth);
 // 通关奖励：恢复固定生命值（封顶到最大生命值，避免溢出）。
 void PlayerHeal(Player *player, float amount);
 
+// 按难度应用最大生命值（Easy/Normal=100，Hard=125，见 game_config 的
+// PLAYER_MAX_HEALTH_BASE / PLAYER_MAX_HEALTH_HARD_MULT）。须在场景 Enter 的
+// InitPlayer 之后、生命值继承/新游戏满血赋值之前调用（仅改 maxHealth，
+// 不改变当前 health）。
+void PlayerApplyDifficulty(Player *player, int difficulty);
+
 // 触发玩家受伤动画：强制播放 HIT（不循环），时长与 UpdatePlayer 内一致。
 // 用于战斗等直接扣血场景（若只同步 lastHealth 而不触发，玩家受伤将无
 // HIT 动画表现）。

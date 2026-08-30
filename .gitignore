@@ -17,6 +17,7 @@ Linux/
 
 # Dos
 docs/
+plans/
 
 # configure files
 .clangd

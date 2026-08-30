@@ -249,6 +249,18 @@ void PlayerHeal(Player *player, float amount) {
     player->health = player->maxHealth;
 }
 
+// 按难度应用最大生命值（Easy/Normal=100，Hard=125）。仅改 maxHealth，
+// 当前 health 由场景随后按「继承 or 新游戏满血」逻辑赋值。
+void PlayerApplyDifficulty(Player *player, int difficulty) {
+  if (!player)
+    return;
+  const float base = PLAYER_MAX_HEALTH_BASE;
+  player->maxHealth =
+      (difficulty >= 2) ? base * PLAYER_MAX_HEALTH_HARD_MULT : base;
+  if (player->health > player->maxHealth)
+    player->health = player->maxHealth;
+}
+
 // 触发玩家受伤动画：强制播放 HIT（时长与 UpdatePlayer 内一致）
 void PlayerTriggerHit(Player *player) {
   if (!player)

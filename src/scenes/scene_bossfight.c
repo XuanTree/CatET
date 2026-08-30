@@ -36,11 +36,11 @@
 #define BOSS_VOLLEY_BASE 4         // 弹幕数量下限（每难度 +2）
 #define BOSS_VOLLEY_RANDOM_EXTRA 2 // 弹幕数量随机增量
 #define BOSS_BULLET_SPEED 230.f    // 弹幕飞行速度（世界坐标/秒）
-#define BOSS_WRONG_PENALTY_BASE 20.f // 困难难度拼写错误基础扣血（×1.5^难度）
-#define BOSS_LARGE_TOP 380.f         // 中心大平台可见顶面 y（世界坐标）
-#define BOSS_FALL_SPEED 150.f        // 字母下落速度（世界坐标/秒）
-#define BOSS_DISTRACTORS 2           // 每批干扰字母数（与剩余正确字母一同掉落）
-#define BOSS_PLAT_PAD 20.f           // 字母出生/落点距平台边缘的最小间距
+// 困难难度拼写错误扣血用 game_config 的 BOSS_WRONG_PENALTY_HARD（=30）
+#define BOSS_LARGE_TOP 380.f  // 中心大平台可见顶面 y（世界坐标）
+#define BOSS_FALL_SPEED 150.f // 字母下落速度（世界坐标/秒）
+#define BOSS_DISTRACTORS 2    // 每批干扰字母数（与剩余正确字母一同掉落）
+#define BOSS_PLAT_PAD 20.f    // 字母出生/落点距平台边缘的最小间距
 
 // 天上落下的字母：下落中 → 落地后并入 character.letters（由 Character 组件
 // 负责拾取/拼写判定），merged 标记避免重复绘制/重复并入。
@@ -395,8 +395,8 @@ static void BossFightAdvanceNext(BossFightSceneData *d) {
     return;
   d->transitionRequested = true;
   d->isBossDead = true;
-  // 通关 boss 关卡奖励：恢复 20 点固定生命值（上限为最大生命值）
-  PlayerHeal(d->cat, BOSS_CLEAR_HEALTH_REWARD);
+  // 通关 boss 关卡奖励：恢复生命值（随关卡递增，上限为最大生命值）
+  PlayerHeal(d->cat, BossClearHealthReward(d->level));
   if (d->level >= MAX_LEVELS) {
     // 最终通关（第 MAX_LEVELS 关）：记录速通最佳时间，经过渡进入通关结算
     // 场景（scene_finish，最终胜利音效由该场景 onEnter 播放）
@@ -503,9 +503,13 @@ static void BossFightSceneEnter(GameScene *self) {
   // 玩家：平台跳跃物理，出生在中心大平台顶面中央
   InitPlayer(d->cat);
   d->cat->app = d->app; // 注入音频宿主（受伤/跳跃音效）
+  // 按难度应用最大生命值（Easy/Normal=100，Hard=125）
+  PlayerApplyDifficulty(d->cat, d->difficulty);
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f)
     d->cat->health = d->app->playerHealth;
+  else
+    d->cat->health = d->cat->maxHealth;
   d->cat->lastHealth = d->cat->health; // 同步受伤检测基准，避免进场误触发
   d->cat->invincibleTimer = 0.0f;      // 进场清除无敌状态
 
@@ -541,6 +545,14 @@ static void BossFightSceneEnter(GameScene *self) {
       (d->difficulty >= 2) ? "assets/words/CET6.txt" : "assets/words/CET4.txt";
   CharacterLoadBankEmbedded(&d->character, relPath);
 
+  // 学习机制：绑定全局错词本/间隔重复抽词（跨关卡共享；
+  // 新游戏已在开始菜单重置，见 StudyReset）
+  if (d->app->study) {
+    StudyRebind(d->app->study, &d->character.bank);
+    d->app->study->currentLevel = d->level;
+    d->character.study = d->app->study;
+  }
+
   // boss：屏幕上方居中出生，覆盖实体默认 hp=3 为百分比制（docs：正确拼写
   // 固定扣除 boss 20% 生命值）
   InitBoss(d->boss,
@@ -557,11 +569,9 @@ static void BossFightSceneEnter(GameScene *self) {
   InitTimer(&d->boss_afkTimer);
   InitTimer(&d->boss_shootTimer);
 
-  // 难度预计算伤害（docs：拼写错误惩罚 +50%/档，仅困难扣血；弹幕为浮动伤害
-  // 3~9，在发射时逐颗随机，不随难度缩放）
-  d->wrongPenalty = (d->difficulty >= 2) ? BOSS_WRONG_PENALTY_BASE *
-                                               powf(1.5f, (float)d->difficulty)
-                                         : 0.0f;
+  // 难度预计算伤害（仅困难扣血，值见 game_config 的 BOSS_WRONG_PENALTY_HARD；
+  // 弹幕为浮动伤害 3~8，在发射时逐颗随机，不随难度缩放）
+  d->wrongPenalty = (d->difficulty >= 2) ? BOSS_WRONG_PENALTY_HARD : 0.0f;
 
   // 多挖空拼写：按难度决定挖空数量（简单 2 / 普通 3 / 困难 4，短词自动收敛）
   d->character.blankCount = 2 + d->difficulty;
@@ -610,6 +620,9 @@ static void BossFightSceneUpdate(GameScene *self, float dt) {
 
   // 下落字母：落地并入 character（先于拾取判定，落地当帧即可拾取）
   BossFightUpdateFalling(d, dt);
+
+  // 学习机制：复习横幅计时递减
+  CharacterUpdateReview(&d->character, dt);
 
   // 玩家物理 + 字母拾取/放下/拼写判定
   BossFightUpdatePlayer(d, dt);
@@ -684,6 +697,9 @@ static void BossFightDrawHud(BossFightSceneData *d) {
   GameAppDrawText(d->app, help,
                   (screenW - GameAppMeasureText(d->app, help, helpSize)) / 2,
                   helpY, helpSize, BLACK);
+
+  // 拼错复习横幅（学习机制，居中偏上）
+  CharacterDrawReviewBanner(&d->character, d->app);
 }
 
 static void BossFightSceneDraw(GameScene *self) {

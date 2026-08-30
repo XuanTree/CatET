@@ -42,6 +42,10 @@ static void StartEnter(GameScene *self) {
   StartData *d = (StartData *)self->data;
   // 进入开始菜单即开启新的一局：重置跨关卡生命值继承（下一关从满血开始）
   ((GameApp *)d->app)->playerHealth = 0.0f;
+  // 新的一局：清空错词本/间隔重复记录（保留数组与词库绑定，见
+  // systems/study_tracker）
+  if (d->app->study)
+    StudyReset(d->app->study);
   d->screen = START_SCREEN_MAIN;
   d->diffAction = -1;
   MenuNavInit(&d->nav, START_ITEM_COUNT);
@@ -189,7 +193,7 @@ static void DrawDifficultyMenu(StartData *d) {
 }
 
 static void StartDraw(GameScene *self) {
-  StartData* d = (StartData*)self->data;
+  StartData *d = (StartData *)self->data;
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 

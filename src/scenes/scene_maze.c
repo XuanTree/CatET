@@ -19,10 +19,10 @@
 // 感谢Deepseek对于迷宫生成算法的贡献
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define MAZE_TIME_LIMIT 60.0f // Update: 迷宫关卡限时60（秒）
-#define WRONG_PENALTY 20.0f   // 拼写错误扣血
-#define TIME_PENALTY 20.0f    // 倒计时归零扣血（并重置倒计时）
-#define LETTER_RADIUS 22.0f   // 字母拾取半径
+#define MAZE_TIME_LIMIT                                                        \
+  60.0f                     // 迷宫关卡限时 60 秒（超时/拼错惩罚统一用
+                            // TIME_PENALTY / MAZE_WRONG_PENALTY）
+#define LETTER_RADIUS 22.0f // 字母拾取半径
 #define MAZE_MAX_LETTERS 8
 #define DISTRACTOR_COUNT 4 // 干扰字母数量（正确字母 1 + 干扰 4）
 
@@ -61,6 +61,7 @@ typedef struct MazeData {
   Character character;
 } MazeData;
 
+// 感谢Deepseek在迷宫生成算法这块儿做出的卓越贡献
 // ── 迷宫布局（随机化 Prim 生成大型封闭式蚂蚁地穴迷宫）──────────────────────
 // 以 40px 网格砌出封闭迷宫箱（四周实心边界墙，无需出口），内部用随机化
 // Prim 算法在「房间网格」（5 列 × 10 层，每房间 6×3 格 = 240×120px）中
@@ -379,9 +380,13 @@ static void MazeEnter(GameScene *self) {
   d->cat = (Player){0};
   InitPlayer(&d->cat);
   d->cat.app = d->app; // 注入音频宿主（受伤/跳跃音效）
+  // 按难度应用最大生命值（Easy/Normal=100，Hard=125）
+  PlayerApplyDifficulty(&d->cat, d->difficulty);
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f)
     d->cat.health = d->app->playerHealth;
+  else
+    d->cat.health = d->cat.maxHealth;
   d->cat.lastHealth = d->cat.health; // 同步受伤检测基准，避免进场误触发
 
   // 初始化字母拼写组件并注入场景回调（落点解析 + 拼写事件）
@@ -409,6 +414,14 @@ static void MazeEnter(GameScene *self) {
     break;
   }
   CharacterLoadBankEmbedded(&d->character, relPath);
+
+  // 学习机制：绑定全局错词本/间隔重复抽词（跨关卡共享；
+  // 新游戏已在开始菜单重置，见 StudyReset）
+  if (d->app->study) {
+    StudyRebind(d->app->study, &d->character.bank);
+    d->app->study->currentLevel = d->level;
+    d->character.study = d->app->study;
+  }
 
   // 构建封闭式蚂蚁地穴迷宫（同时确定拼写平台与字母候选落点）
   BuildMazeLayout(d);
@@ -554,8 +567,8 @@ static Vector2 MazeDropResolver(void *ctx, const Player *p) {
 // 通关第 MAX_LEVELS 关判定最终胜利：记录速通最佳时间并回到开始菜单。
 static void MazeOnSpellCorrect(void *ctx) {
   MazeData *d = (MazeData *)ctx;
-  // 通关奖励：恢复 5 点固定生命值（上限为最大生命值）
-  PlayerHeal(&d->cat, CLEAR_HEALTH_REWARD);
+  // 通关奖励：恢复生命值（随关卡递增，上限为最大生命值）
+  PlayerHeal(&d->cat, ClearHealthReward(d->level));
   if (d->level >= MAX_LEVELS) {
     // 最终通关：记录速通最佳时间，经过渡进入通关结算场景
     // （scene_finish，最终胜利音效由该场景 onEnter 播放）
@@ -575,7 +588,7 @@ static void MazeOnSpellCorrect(void *ctx) {
 // 拼写错误：扣血并重置（字母放回原位由 Character 组件处理，需重新寻找）
 static void MazeOnSpellWrong(void *ctx) {
   MazeData *d = (MazeData *)ctx;
-  d->cat.health -= WRONG_PENALTY;
+  d->cat.health -= MAZE_WRONG_PENALTY;
   if (d->cat.health < 0.0f)
     d->cat.health = 0.0f;
 }
@@ -607,6 +620,9 @@ static void MazeUpdate(GameScene *self, float dt) {
     d->cat.velocity = (Vector2){0, 0};
     d->cat.isOnTheGround = true;
   }
+
+  // 学习机制：复习横幅计时递减
+  CharacterUpdateReview(&d->character, dt);
 
   CharacterUpdate(&d->character, &d->cat);
 
@@ -665,6 +681,9 @@ static void DrawHud(MazeData *d) {
   GameAppDrawText(d->app, help,
                   (screenW - GameAppMeasureText(d->app, help, helpSize)) / 2,
                   helpY, helpSize, BLACK);
+
+  // 拼错复习横幅（学习机制，居中偏上）
+  CharacterDrawReviewBanner(&d->character, d->app);
 }
 
 static void MazeDraw(GameScene *self) {

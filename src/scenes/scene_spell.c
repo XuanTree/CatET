@@ -18,13 +18,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── 关卡常量 ──────────────────────────────────────────────────────────────
-#define SPELL_TIME_LIMIT 15.0f    // Update: 极速拼写关卡限时 15 秒
-#define SPELL_TIME_PENALTY 20.0f  // 倒计时归零扣除的生命值（并进入下一关）
-#define SPELL_WRONG_PENALTY 20.0f // 拼写错误扣除的生命值（并重置填空）
-#define SPELL_FALL_SPEED 150.0f   // 字母下落速度（世界坐标/秒）
-#define SPELL_FALL_PENALTY                                                     \
-  0.2f                      // 掉落屏幕外扣除的最大生命值比例（与平台关卡一致）
-#define SPELL_DISTRACTORS 2 // 每批干扰字母数（与剩余正确字母一同掉落）
+#define SPELL_TIME_LIMIT                                                       \
+  15.0f                          // 极速拼写关卡限时 15 秒（超时/拼错/掉落惩罚
+                                 // 统一用 TIME_PENALTY / SPELL_WRONG_PENALTY /
+                                 // FALL_PENALTY_RATIO，见 core/game_config.h）
+#define SPELL_FALL_SPEED 150.0f  // 字母下落速度（世界坐标/秒）
+#define SPELL_DISTRACTORS 2      // 每批干扰字母数（与剩余正确字母一同掉落）
 #define SPELL_MAX_FALL_LETTERS 8 // 空中下落字母数组上限
 #define SPELL_PLAT_TOP 400.0f    // 大平台可见顶面目标 y（世界坐标）
 #define SPELL_DROP_PAD 30.0f     // 字母出生/落点距平台边缘的最小间距
@@ -226,7 +225,7 @@ static void SpellClampPlayer(SpellSceneData *d) {
     p->position.y = platTop - p->size.y;
     p->velocity = (Vector2){0, 0};
     p->isOnTheGround = true;
-    p->health -= p->maxHealth * SPELL_FALL_PENALTY; // 掉落惩罚
+    p->health -= p->maxHealth * FALL_PENALTY_RATIO; // 掉落惩罚
     if (p->health < 0.0f)
       p->health = 0.0f;
   }
@@ -244,13 +243,14 @@ static void SpellResetPuzzle(SpellSceneData *d) {
   SpellSpawnWave(d);
 }
 
-// 通关：最终胜利（第 MAX_LEVELS 关）或普通通关进入下一关（经转场，只请求一次）
+// 通关：最终胜利（第 MAX_LEVELS
+// 关）或普通通关进入下一关（经转场，只请求一次）。
+// 仅由拼写正确（填满全部挖空）触发；超时已改为扣血留在本关（见
+// SpellSceneUpdate，2026-08 修正「躺过」漏洞）。
 static void SpellAdvanceNext(SpellSceneData *d) {
   if (d->transitionRequested)
     return;
   d->transitionRequested = true;
-  // 注意：本函数也会在倒计时超时推进时被调用（非通关），通关奖励见
-  // SpellOnSpellCorrect（仅真正拼写正确填满全部挖空才发放）
   if (d->level >= MAX_LEVELS) {
     // 最终通关：记录速通最佳时间，经过渡进入通关结算场景
     // （scene_finish，最终胜利音效由该场景 onEnter 播放）
@@ -276,8 +276,8 @@ static void SpellAdvanceNext(SpellSceneData *d) {
 static void SpellOnSpellCorrect(void *ctx) {
   SpellSceneData *d = (SpellSceneData *)ctx;
   if (CharacterRemainingBlanks(&d->character) == 0) {
-    // 全部挖空填满 → 通关：发放通关奖励（恢复 5 点固定生命值，上限最大生命值）
-    PlayerHeal(d->cat, CLEAR_HEALTH_REWARD);
+    // 全部挖空填满 → 通关：发放通关奖励（随关卡递增，上限最大生命值）
+    PlayerHeal(d->cat, ClearHealthReward(d->level));
     SpellAdvanceNext(d);
     return;
   }
@@ -323,9 +323,13 @@ static void SpellSceneEnter(GameScene *self) {
   // 玩家：平台跳跃物理，出生在大平台顶面中央
   InitPlayer(d->cat);
   d->cat->app = d->app; // 注入音频宿主（受伤/跳跃音效）
+  // 按难度应用最大生命值（Easy/Normal=100，Hard=125）
+  PlayerApplyDifficulty(d->cat, d->difficulty);
   // 生命值继承：进入新关卡时恢复上一关剩余 HP（新游戏 playerHealth=0 → 满血）
   if (d->app->playerHealth > 0.0f)
     d->cat->health = d->app->playerHealth;
+  else
+    d->cat->health = d->cat->maxHealth;
   d->cat->lastHealth = d->cat->health; // 同步受伤检测基准，避免进场误触发
 
   // 大平台：核心落脚点（无须额外绘制矩形地面，docs 关卡设计）
@@ -364,6 +368,14 @@ static void SpellSceneEnter(GameScene *self) {
       (d->difficulty >= 2) ? "assets/words/CET6.txt" : "assets/words/CET4.txt";
   CharacterLoadBankEmbedded(&d->character, relPath);
 
+  // 学习机制：绑定全局错词本/间隔重复抽词（跨关卡共享；
+  // 新游戏已在开始菜单重置，见 StudyReset）
+  if (d->app->study) {
+    StudyRebind(d->app->study, &d->character.bank);
+    d->app->study->currentLevel = d->level;
+    d->character.study = d->app->study;
+  }
+
   // 多挖空拼写：按难度决定挖空数量（简单 2 / 普通 3 / 困难 4，短词自动收敛）
   d->character.blankCount = 2 + d->difficulty;
 
@@ -390,15 +402,14 @@ static void SpellSceneUpdate(GameScene *self, float dt) {
     return;
   }
 
-  // 倒计时：归零扣血并进入下一关（docs：规定时间内未完成则扣血并进入下一关）
+  // 倒计时：归零扣血并重置倒计时，留在本关继续（与平台/迷宫超时语义一致，
+  // 避免「躺过」拼写关；2026-08 修正：原实现超时会直接进入下一关）
   d->timeLeft -= dt;
   if (d->timeLeft <= 0.0f) {
-    d->cat->health -= SPELL_TIME_PENALTY;
-    if (d->cat->health <= 0.0f) {
+    d->cat->health -= TIME_PENALTY;
+    if (d->cat->health < 0.0f)
       d->cat->health = 0.0f;
-    } else {
-      SpellAdvanceNext(d);
-    }
+    d->timeLeft = SPELL_TIME_LIMIT;
     return;
   }
 
@@ -413,6 +424,9 @@ static void SpellSceneUpdate(GameScene *self, float dt) {
   d->cat->isOnTheGround = false;
   PlayerCollision(d->cat, d->large_platform);
   SpellClampPlayer(d);
+
+  // 学习机制：复习横幅计时递减
+  CharacterUpdateReview(&d->character, dt);
 
   // 字母拾取 / 放下 / 拼写判定
   CharacterUpdate(&d->character, d->cat);
@@ -466,6 +480,9 @@ static void SpellDrawHud(SpellSceneData *d) {
   GameAppDrawText(d->app, help,
                   (screenW - GameAppMeasureText(d->app, help, helpSize)) / 2,
                   helpY, helpSize, BLACK);
+
+  // 拼错复习横幅（学习机制，居中偏上）
+  CharacterDrawReviewBanner(&d->character, d->app);
 }
 
 static void SpellSceneDraw(GameScene *self) {

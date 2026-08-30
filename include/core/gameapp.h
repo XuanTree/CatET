@@ -14,6 +14,10 @@
 #include <math.h>
 #include <raylib.h>
 
+// 前置声明（完整定义见 systems/study_tracker.h；game.h 已包含）。
+// 仅用于 GameApp.study 指针字段，避免 core 层反向依赖 systems 层。
+typedef struct StudyTracker StudyTracker;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 框架层：统一管理窗口、图标、音频、固定分辨率渲染目标与呈现逻辑。
 // 所有场景复用同一套「固定分辨率渲染 + 等比缩放呈现」流程，
@@ -44,7 +48,7 @@ typedef struct GameApp {
   bool musicEnabled; // 音乐总开关（false 时所有音乐静默，默认 true；
                      // 当前版本尚无音乐资源，接口预留）
 
-  Sound uiSound;         // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
+  Sound uiSound;     // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
   bool uiSoundValid; // 是否成功加载 UI 音效（无效时静默跳过播放，避免空操作）
   Sound
       meetEnemySound; // 触碰敌怪/进入战斗音效（assets/sounds/meet_the_enemy.ogg）
@@ -68,6 +72,11 @@ typedef struct GameApp {
 
   Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
   bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）
+
+  // ── 本局错词本/间隔重复抽词（见 systems/study_tracker）──────────────────
+  // 由 Run 创建并持有（static），跨关卡共享；新游戏（开始菜单）时重置。
+  // 指针字段（不拥有），供各拼写类场景绑定到 Character.study。
+  StudyTracker *study;
 } GameApp;
 
 // 初始化窗口、图标、音频设备与固定分辨率渲染目标。
