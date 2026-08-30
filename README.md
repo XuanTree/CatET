@@ -218,7 +218,7 @@ Distributed under the **GNU General Public License v3.0** — see [`LICENSE`](LI
 
 ---
 
-## Acknowledgements
+## 💖 Acknowledgements
 
 - **Nai Tang** (my cat) — the inspiration for the game's main character.
 - [@raysan5](https://github.com/raysan5) — [Raylib](https://github.com/raysan5/raylib) and [Raygui](https://github.com/raysan5/raygui) are truly fantastic libraries!
