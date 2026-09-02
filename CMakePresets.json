@@ -4,13 +4,18 @@
     {
       "name": "gcc-mingw",
       "displayName": "GCC 16.1.0 (Debug)",
-      "description": "正在使用编译器: C = C:\\msys64\\ucrt64\\bin\\gcc.exe, CXX = C:\\msys64\\ucrt64\\bin\\g++.exe",
+      "description": "正在使用编译器: C = C:\\msys64\\mingw64\\bin\\gcc.exe, CXX = C:\\msys64\\mingw64\\bin\\g++.exe",
       "generator": "MinGW Makefiles",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "environment": {
+        "PATH": "C:/msys64/mingw64/bin;$penv{PATH}"
+      },
       "cacheVariables": {
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/${presetName}",
-        "CMAKE_C_COMPILER": "C:/msys64/ucrt64/bin/gcc.exe",
-        "CMAKE_CXX_COMPILER": "C:/msys64/ucrt64/bin/g++.exe",
+        "CMAKE_C_COMPILER": "C:/msys64/mingw64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "C:/msys64/mingw64/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "C:/msys64/mingw64/bin/mingw32-make.exe",
+        "Python3_EXECUTABLE": "C:/msys64/mingw64/bin/python.exe",
         "CMAKE_BUILD_TYPE": "Debug"
       }
     },

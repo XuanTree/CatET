@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CatET VERSION 0.2.0 LANGUAGES C)
+project(CatET VERSION 0.3.0 LANGUAGES C)
 
 # Generate compile_commands.json for clangd / language servers
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -38,9 +38,7 @@ if(NOT raylib_FOUND)
 
     # 仅编译 raylib，跳过其自带 install 规则，避免开发文件（头文件/静态库）
     # 混入安装包（DEB/RPM/TGZ）。
-    set(CMAKE_SKIP_INSTALL_RULES TRUE)
     FetchContent_MakeAvailable(raylib)
-    set(CMAKE_SKIP_INSTALL_RULES FALSE)
 endif()
 
 # 兼容：Windows 的 Findraylib 提供 raylib::raylib；FetchContent 提供的目标是
