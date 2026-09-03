@@ -40,4 +40,16 @@ void HudDrawTime(const GameApp *app, float timeSeconds);
 // 右上角：方框内 ESC 提示（提示玩家按 ESC 暂停）。
 void HudDrawEscHint(const GameApp *app);
 
+// 单词选项行自适应布局（scene_battle / scene_infinite 的三选一共用）：
+//   每个选项框宽度随对应单词长度浮动（词宽 + padX×2，且不低于 minBoxW），
+//   全部框与 gap 一起在 availW 宽度内居中；若总宽放不下，逐档缩小字号
+//   （每次 -2，从 baseFontSize 到 minFontSize）重新测量，极端长词仍超宽时
+//   改为从左侧排布（防御，保证三个框互不重叠、都可读）。
+//   words[i] 为候选单词文本（内部按 "" 防空）；count 为选项数。
+//   返回实际使用的字号；outRects[i] 填入各框矩形（含统一的 y/height）。
+int HudLayoutWordRow(const GameApp *app, const char *const *words, int count,
+                     float availW, int gap, int padX, int baseFontSize,
+                     int minFontSize, float minBoxW, float boxH, float y,
+                     Rectangle *outRects);
+
 #endif // TOOLS_HUD_H

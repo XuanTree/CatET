@@ -4,16 +4,19 @@
 // ── 开始菜单交互结果 ───────────────────────────────────────────────
 typedef enum StartAction {
   START_ACTION_NONE = 0,
-  START_ACTION_PLAY,     // 开始游戏 → 进入难度选择二级菜单
+  START_ACTION_PLAY,     // 开始游戏 → 进入难度选择二级菜单（主线 100 关）
+  START_ACTION_INFINITE, // 无尽模式 → 进入难度选择二级菜单（scene_infinite）
   START_ACTION_SETTINGS, // 设置 → 压入设置覆盖层（scene_settings）
   START_ACTION_QUIT,     // 退出游戏
 } StartAction;
 
 // 开始菜单选项定义（顺序与 MenuNav.selected 索引一一对应）
-static const char *const kStartLabels[] = {"Play", "Settings", "Quit"};
+static const char *const kStartLabels[] = {"Play", "Infinite", "Settings",
+                                            "Quit"};
 static const StartAction kStartActions[] = {
-    START_ACTION_PLAY, START_ACTION_SETTINGS, START_ACTION_QUIT};
-#define START_ITEM_COUNT 3
+    START_ACTION_PLAY, START_ACTION_INFINITE, START_ACTION_SETTINGS,
+    START_ACTION_QUIT};
+#define START_ITEM_COUNT 4
 
 // ── 难度选择二级菜单 ─────────────────────────────────────────────────
 // 选中 Play 后弹出：玩家可在 Easy / Normal / Hard 中选择初始难度
@@ -36,6 +39,9 @@ typedef struct StartData {
   StartScreen screen; // 当前所在菜单界面
   StartAction action; // 主菜单动作：Draw/Update 阶段由按钮产生，Update 消费执行
   int diffAction;     // 难度菜单动作：-1=无、0/1/2=按该难度开始游戏
+  // 难度菜单的服务模式：由主菜单哪个入口进入（PLAY=主线 100 关，
+  // INFINITE=无尽模式），难度一经选择即按该模式创建对应首场景。
+  StartAction pendingMode;
 } StartData;
 
 static void StartEnter(GameScene *self) {
@@ -47,6 +53,8 @@ static void StartEnter(GameScene *self) {
   if (d->app->study)
     StudyReset(d->app->study);
   d->screen = START_SCREEN_MAIN;
+  d->action = START_ACTION_NONE;
+  d->pendingMode = START_ACTION_PLAY;
   d->diffAction = -1;
   MenuNavInit(&d->nav, START_ITEM_COUNT);
   MenuNavInit(&d->diffNav, DIFF_ITEM_COUNT);
@@ -75,13 +83,21 @@ static void StartUpdate(GameScene *self, float dt) {
       return;
     }
 
-    // 消费难度动作（键盘导航或鼠标点击写入），统一在此执行
+    // 消费难度动作（键盘导航或鼠标点击写入），统一在此执行：
+    // 按入口模式（主线/无尽）与所选难度创建对应首场景（经转场）
     if (d->diffAction >= 0) {
-      // 按所选难度开始游戏（平台跳跃第 1 关），难度随 LevelFlow 传递
-      GameStackReplace(self->owner, TransitionSceneCreate(
-                                        d->app, LevelFlowCreateScene(
-                                                    d->app, LEVEL_TYPE_PLATFORM,
-                                                    1, d->diffAction)));
+      if (d->pendingMode == START_ACTION_INFINITE) {
+        // 无尽模式：自建无尽答题场景（难度决定词库与惩罚，scene_infinite）
+        GameStackReplace(self->owner, TransitionSceneCreate(
+                                          d->app, InfiniteSceneCreate(
+                                                      d->app, d->diffAction)));
+      } else {
+        // 主线模式：平台跳跃第 1 关，难度随 LevelFlow 传递
+        GameStackReplace(self->owner, TransitionSceneCreate(
+                                          d->app, LevelFlowCreateScene(
+                                                      d->app, LEVEL_TYPE_PLATFORM,
+                                                      1, d->diffAction)));
+      }
       return;
     }
     return;
@@ -101,7 +117,10 @@ static void StartUpdate(GameScene *self, float dt) {
   // 消费动作（raygui 交互在 Draw 阶段写入，此处统一执行切换/退出）
   switch (d->action) {
   case START_ACTION_PLAY:
-    // 进入难度选择二级菜单，由玩家指定初始难度后再开赛
+  case START_ACTION_INFINITE:
+    // 两个模式入口共用难度选择二级菜单：先记录模式，选好难度后再开赛。
+    // 难度菜单的 X 返回会回到主菜单，不产生歧义。
+    d->pendingMode = d->action;
     d->screen = START_SCREEN_DIFFICULTY;
     MenuNavInit(&d->diffNav, DIFF_ITEM_COUNT);
     d->diffAction = -1;
@@ -120,13 +139,15 @@ static void StartUpdate(GameScene *self, float dt) {
   d->action = START_ACTION_NONE;
 }
 
-// 主菜单按钮绘制（Play / Settings / Quit）
+// 主菜单按钮绘制（Play / Infinite / Settings / Quit）
 static void DrawMainMenu(StartData *d) {
   const float btnW = 180;
-  const float btnH = 44;
+  const float btnH = 40;
+  // 四项按钮组：主菜单标题/副标题/最佳时间占据上半屏，按钮组起始于
+  // 中部偏下（约 y=244，四项总高 190 → 底边 424，与底部提示不重叠）
   const float btnX = (d->app->logicWidth - btnW) / 2;
-  const float btnY = d->app->logicHeight / 2.f + 20;
-  const float gap = 14;
+  const float btnY = d->app->logicHeight / 2.f + 4;
+  const float gap = 10;
 
   for (int i = 0; i < START_ITEM_COUNT; i++) {
     Rectangle rec = {
@@ -155,9 +176,13 @@ static void DrawDifficultyMenu(StartData *d) {
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 
-  // 标题置于副标题之下、按钮之上，避免与标题/副标题重叠
-  const char *diffTitle = "Select Difficulty";
-  const int dtSize = 22;
+  // 标题置于副标题之下、按钮之上，避免与标题/副标题重叠；
+  // 无尽模式与主线模式共用难度菜单，标题随入口模式提示当前目标
+  const char *diffTitle =
+      (d->pendingMode == START_ACTION_INFINITE) ? "Infinite Difficulty"
+                                                : "Select Difficulty";
+  const int dtSize = 20; // “Infinite Difficulty”/“Select Difficulty”标题字号
+                        // （22 略宽，480 宽度下显示不全，降到 20）
   const int titleSize = 48; // 与 StartDraw 中主标题字号一致
   const int subSize = 20;   // 与 StartDraw 中副标题字号一致
   const int dtY = screenH / 4 + titleSize / 2 + 12 + subSize + 20;

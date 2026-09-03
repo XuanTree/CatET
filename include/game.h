@@ -64,6 +64,7 @@
 #include "scenes/scene_bossfight.h"
 #include "scenes/scene_fail.h"
 #include "scenes/scene_finish.h"
+#include "scenes/scene_infinite.h"
 #include "scenes/scene_maze.h"
 #include "scenes/scene_pause.h"
 #include "scenes/scene_platform.h"

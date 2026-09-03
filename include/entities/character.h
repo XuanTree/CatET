@@ -84,6 +84,12 @@ typedef struct Character {
   // 学习机制（阶段1B）：可选绑定的错词本/间隔重复抽词（NULL 时禁用）。
   // 绑定后 CharacterSetupPuzzle 用它抽词，拼写正确/错误自动调用标记。
   StudyTracker *study;
+  // 当前词条在词库中的指针（抽中时记录，StudyMark* 用它按下标定位错词；
+  // 兜底词条/词库为空时为 NULL，标记自动退化为仅统计计数）。
+  // 为什么不用 &entry：entry 是值拷贝，StudyIndex 靠指针差分定位下标会
+  // 得到无效偏移，导致错词标记（wrongCount/lastWrongLevel/answered）一直
+  // 落空；保留抽取时的原始指针才能让间隔重复真正生效。
+  const WordEntry *studyEntry;
 
   // 拼错复习反馈：最近拼错词条 + 剩余展示时间（>0 时绘制复习横幅）。
   WordEntry reviewEntry;

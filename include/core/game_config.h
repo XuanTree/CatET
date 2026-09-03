@@ -71,6 +71,19 @@
 // Boss 拼错惩罚（仅困难生效）：与战斗 Hard 一致
 #define BOSS_WRONG_PENALTY_HARD 30.0f
 
+// ── 无尽模式（scene_infinite）────────────────────────────────────────────
+// 「无敌人的战斗场景」：黑底网格舞台 + 每轮三选一（词库/词性干扰规则与
+// 战斗一致，给词性+中文释义选英文单词）。答对仅计 1 分、不回复生命值
+// （答对是继续游戏的前提，失误次数是资源），答错按难度扣血且把词条送入
+// 错词本（study_tracker：拼错后间隔 STUDY_REVISIT_INTERVAL 题再复现，
+// 驱动复习）；HP 归零本局结束，以「单局最高答对数」作为无尽模式最佳成绩，
+// 独立于主线速通持久化（见 systems/save_data 的 infiniteBest 字段）。
+#define INFINITE_WRONG_PENALTY_EASY 15.0f   // Easy：100HP 下约 6 次失误出局
+#define INFINITE_WRONG_PENALTY_NORMAL 20.0f // Normal：100HP 下约 5 次失误出局
+#define INFINITE_WRONG_PENALTY_HARD 25.0f   // Hard：125HP 下约 5 次失误出局
+#define INFINITE_REVIEW_SECONDS 3.0f        // 答错后正确答案复习横幅显示时长（秒）
+#define INFINITE_CORRECT_FLASH_SECONDS 1.0f // 答对后得分反馈横幅显示时长（秒）
+
 // ── 音频总开关默认值：首次运行或旧存档缺少字段时使用（设置界面可修改，
 // 持久化到 save.json，见 systems/save_data）。
 #define DEFAULT_SOUND_ENABLED true

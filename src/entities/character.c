@@ -74,11 +74,13 @@ const char *CharacterSetupPuzzle(Character *c) {
   }
   if (entry) {
     c->entry = *entry;
+    c->studyEntry = entry; // 记录词库内指针供 StudyMark* 定位
   } else {
     // 词库为空或没有合适长度：使用兜底单词，保证场景仍可运行
     snprintf(c->entry.word, sizeof(c->entry.word), "cat");
     snprintf(c->entry.meaning, sizeof(c->entry.meaning), "n. (fallback)");
     snprintf(c->entry.pos, sizeof(c->entry.pos), "n.");
+    c->studyEntry = NULL; // 兜底词不在词库内，无法按下标标记
   }
 
   // 按 blankCount 挖空多个字母（默认 1；场景可设 >1）：随机选互不相同的
@@ -295,7 +297,8 @@ void CharacterUpdate(Character *c, Player *p) {
     c->heldLetterIndex = -1;
     // 学习机制：标记答对（清除错词记录）并关闭复习横幅
     if (c->study)
-      StudyMarkCorrect(c->study, &c->entry);
+      StudyMarkCorrect(c->study,
+                       c->studyEntry ? c->studyEntry : &c->entry);
     c->reviewTimer = 0.0f;
     if (c->onSpellCorrect)
       c->onSpellCorrect(c->eventCtx);
@@ -307,7 +310,9 @@ void CharacterUpdate(Character *c, Player *p) {
     // 学习机制：标记拼错并记录复习词条。须在 onSpellWrong 之前记录，
     // 因为场景回调可能重置谜题覆盖 entry。
     if (c->study)
-      StudyMarkWrong(c->study, &c->entry, c->study->currentLevel);
+      StudyMarkWrong(c->study,
+                     c->studyEntry ? c->studyEntry : &c->entry,
+                     c->study->currentLevel);
     c->reviewEntry = c->entry;
     c->reviewTimer = CHARACTER_REVIEW_TIME;
     if (c->onSpellWrong)

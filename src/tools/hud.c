@@ -86,3 +86,48 @@ void HudDrawEscHint(const GameApp *app) {
                   (int)(boxY + (boxH - (float)fontSize) * 0.5f), fontSize,
                   WHITE);
 }
+
+// 单词选项行自适应布局（见 hud.h 说明）：返回实际字号并填好各框矩形。
+// 框宽随词长浮动；整行在 availW 内居中，放不下时先缩字号再试。
+int HudLayoutWordRow(const GameApp *app, const char *const *words, int count,
+                     float availW, int gap, int padX, int baseFontSize,
+                     int minFontSize, float minBoxW, float boxH, float y,
+                     Rectangle *outRects) {
+  if (!app || !words || count <= 0 || !outRects)
+    return baseFontSize;
+  if (minFontSize <= 0)
+    minFontSize = 8;
+  int fs = (baseFontSize > minFontSize) ? baseFontSize : minFontSize;
+
+  // 试排：总宽 = Σ max(minBoxW, 词宽+2*padX) + gap*(count-1)。
+  // 放不进可用宽则逐档缩字号（保持同一行内字号一致），直到放下或到下限。
+  float total = 0.0f;
+  for (;;) {
+    total = 0.0f;
+    for (int i = 0; i < count; i++) {
+      const char *w = words[i] ? words[i] : "";
+      float bw = (float)GameAppMeasureText(app, w, fs) + (float)(padX * 2);
+      if (bw < minBoxW)
+        bw = minBoxW;
+      total += bw;
+    }
+    total += (float)gap * (float)(count - 1);
+    if (total <= availW || fs <= minFontSize)
+      break;
+    fs -= 2;
+  }
+
+  // 生成各框矩形：优先整体居中；极端超宽时从左侧排布保证互不重叠
+  float x = (availW - total) * 0.5f;
+  if (x < 0.0f)
+    x = 0.0f;
+  for (int i = 0; i < count; i++) {
+    const char *w = words[i] ? words[i] : "";
+    float bw = (float)GameAppMeasureText(app, w, fs) + (float)(padX * 2);
+    if (bw < minBoxW)
+      bw = minBoxW;
+    outRects[i] = (Rectangle){.x = x, .y = y, .width = bw, .height = boxH};
+    x += bw + (float)gap;
+  }
+  return fs;
+}

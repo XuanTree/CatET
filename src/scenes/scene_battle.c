@@ -753,24 +753,29 @@ static void DrawBattleHud(BattleSceneData *d) {
   }
 
   if (d->phase == BATTLE_PHASE_PLAYER_TURN) {
-    // 三个候选单词框（居中，位于敌怪下方）
-    const int boxW = 140;
-    const int boxH = 36;
-    const int gap = 24;
-    const int totalW = boxW * 3 + gap * 2;
-    const int startX = (screenW - totalW) / 2;
-    const int boxY = 110;
+    // 三个候选单词框（居中，位于敌怪下方）：框宽随词长自适应
+    // （HudLayoutWordRow：长词框更宽，避免长词溢出与相邻框重叠）
+    const float boxY = 110.0f; // 选项行顶端（释义提示画在其下 boxY+boxH+14）
+    const float boxH = 36.0f;
+    const char *words[3];
+    for (int i = 0; i < 3; i++)
+      words[i] = d->options[i].word;
+    Rectangle rects[3];
+    const int fs = HudLayoutWordRow(
+        d->app, words, 3, (float)screenW, 16 /*gap*/, 16 /*padX*/,
+        20 /*base*/, 14 /*min*/, 120.0f /*minW*/, boxH, boxY, rects);
 
     for (int i = 0; i < 3; i++) {
-      Rectangle rec = {startX + i * (boxW + gap), boxY, boxW, boxH};
+      Rectangle rec = rects[i];
       const bool selected = (i == d->selectIndex);
       // 选中项高亮；不直接暴露答案（玩家凭「词性+汉语」提示自行判断）
       DrawRectangleRec(rec, selected ? Fade(WHITE, 0.18f) : Fade(WHITE, 0.06f));
-      DrawRectangleLinesEx(rec, selected ? 2.f : 1.f, selected ? YELLOW : GRAY);
-      const int tw = GameAppMeasureText(d->app, d->options[i].word, 20);
+      DrawRectangleLinesEx(rec, selected ? 2.f : 1.f,
+                           selected ? YELLOW : GRAY);
+      const int tw = GameAppMeasureText(d->app, d->options[i].word, fs);
       GameAppDrawText(d->app, d->options[i].word,
                       (int)(rec.x + rec.width * 0.5f) - tw / 2,
-                      (int)(rec.y + rec.height * 0.5f) - 10, 20,
+                      (int)(rec.y + rec.height * 0.5f) - fs / 2, fs,
                       selected ? WHITE : LIGHTGRAY);
     }
 
