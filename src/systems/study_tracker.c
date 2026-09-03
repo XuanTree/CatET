@@ -9,26 +9,48 @@
 //   - 所有数组可为 NULL（空词库/分配失败），对应路径安全降级。
 // ─────────────────────────────────────────────────────────────────────────────
 
+// 确保 answered/wrongCount/lastWrongLevel 与词库大小匹配且已分配。
+// 返回 true 表示数组可用（长度 == bank->count）；false 表示空词库/词库无
+// entries/分配失败（调用方走纯随机/空操作降级，数组保持 NULL 或旧值）。
+// 重建条件：数组缺失（新游戏未 Init / 上次分配失败），或 allocatedCount
+// 与 bank->count 不符（跨难度换了词库：CET4 7508 词 vs CET6 5651 词）。
+// 同尺寸重绑（同词库新实例、内容与下标顺序一致）时保留数组与记录，
+// 实现跨关按下标延续错词记录；尺寸不符即词库不同，旧记录不迁移（清零）。
+static bool StudyEnsureArrays(StudyTracker *t, const WordsBank *bank) {
+  if (!bank || !bank->entries || bank->count <= 0)
+    return false; // 空词库不建数组；已有数组保持不动（后续抽词会提前返回）
+  const int n = bank->count;
+  if (t->answered && t->wrongCount && t->lastWrongLevel &&
+      t->allocatedCount == n) {
+    return true; // 已分配且长度匹配
+  }
+  free(t->answered);
+  free(t->wrongCount);
+  free(t->lastWrongLevel);
+  t->answered = (bool *)calloc((size_t)n, sizeof(bool));
+  t->wrongCount = (int *)calloc((size_t)n, sizeof(int));
+  t->lastWrongLevel = (int *)calloc((size_t)n, sizeof(int));
+  t->allocatedCount = 0;
+  if (!t->answered || !t->wrongCount || !t->lastWrongLevel) {
+    // 任一分配失败：整体降级为纯随机（释放已分配部分并置 NULL）
+    free(t->answered);
+    free(t->wrongCount);
+    free(t->lastWrongLevel);
+    t->answered = NULL;
+    t->wrongCount = NULL;
+    t->lastWrongLevel = NULL;
+    return false;
+  }
+  t->allocatedCount = n;
+  return true;
+}
+
 void StudyInit(StudyTracker *t, const WordsBank *bank) {
   if (!t)
     return;
   memset(t, 0, sizeof(*t));
   t->bank = bank;
-  if (bank && bank->count > 0 && bank->entries) {
-    const size_t n = (size_t)bank->count;
-    t->answered = (bool *)calloc(n, sizeof(bool));
-    t->wrongCount = (int *)calloc(n, sizeof(int));
-    t->lastWrongLevel = (int *)calloc(n, sizeof(int));
-    // 任一分配失败：整体降级为纯随机（释放已分配部分并置 NULL）
-    if (!t->answered || !t->wrongCount || !t->lastWrongLevel) {
-      free(t->answered);
-      free(t->wrongCount);
-      free(t->lastWrongLevel);
-      t->answered = NULL;
-      t->wrongCount = NULL;
-      t->lastWrongLevel = NULL;
-    }
-  }
+  StudyEnsureArrays(t, bank); // 空词库/分配失败：数组为 NULL，抽词降级
 }
 
 void StudyFree(StudyTracker *t) {
@@ -40,6 +62,7 @@ void StudyFree(StudyTracker *t) {
   t->answered = NULL;
   t->wrongCount = NULL;
   t->lastWrongLevel = NULL;
+  t->allocatedCount = 0;
   t->bank = NULL;
   t->lastWrong = NULL;
 }
@@ -48,32 +71,18 @@ void StudyRebind(StudyTracker *t, const WordsBank *bank) {
   if (!t)
     return;
   t->bank = bank;
-  // 防御：词库非空但数组缺失（新游戏未 Init / 上次分配失败）→ 补建数组。
-  // 同难度词库固定，正常路径数组已在 StudyInit 分配，这里不会重建。
-  if (bank && bank->count > 0 && bank->entries &&
-      (!t->answered || !t->wrongCount || !t->lastWrongLevel)) {
-    const size_t sz = (size_t)bank->count;
-    free(t->answered);
-    free(t->wrongCount);
-    free(t->lastWrongLevel);
-    t->answered = (bool *)calloc(sz, sizeof(bool));
-    t->wrongCount = (int *)calloc(sz, sizeof(int));
-    t->lastWrongLevel = (int *)calloc(sz, sizeof(int));
-    if (!t->answered || !t->wrongCount || !t->lastWrongLevel) {
-      free(t->answered);
-      free(t->wrongCount);
-      free(t->lastWrongLevel);
-      t->answered = NULL;
-      t->wrongCount = NULL;
-      t->lastWrongLevel = NULL;
-    }
-  }
+  // 尺寸与现有数组不符（跨难度换词库）或数组缺失时重建，防按下标越界写；
+  // 同尺寸重绑（同词库新实例）保留数组与错词记录（见 StudyEnsureArrays）。
+  StudyEnsureArrays(t, bank);
 }
 
 void StudyReset(StudyTracker *t) {
   if (!t)
     return;
-  const size_t n = (t->bank && t->bank->entries) ? (size_t)t->bank->count : 0;
+  // 清零长度依据 allocatedCount（数组真实长度），不读取 bank：
+  // 回开始菜单等路径可能在上一个词库已释放后才调用 Reset，解引用
+  // bank（悬垂）是 UB。allocatedCount 为 0 表示无数组，memset 空操作。
+  const size_t n = (size_t)t->allocatedCount;
   if (t->answered)
     memset(t->answered, 0, sizeof(bool) * n);
   if (t->wrongCount)

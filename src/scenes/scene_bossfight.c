@@ -754,6 +754,20 @@ static void BossFightSceneDraw(GameScene *self) {
   BossFightDrawHud(d);
 }
 
+// 场景创建后、onEnter 前被销毁（如过渡场景被中途打断时持有的未消费目标）
+// —— 仅释放工厂 Create 阶段预分配的 boss / bullets / cat。贴图/词库在
+// Enter 才加载，由 Exit 释放；不在此处理。必须无副作用（Exit 会写回
+// app->playerHealth，不能用于未 Enter 的场景）。
+static void BossFightSceneDiscard(GameScene *self) {
+  BossFightSceneData *d = (BossFightSceneData *)self->data;
+  free(d->boss);
+  free(d->bullets);
+  free(d->cat);
+  d->boss = NULL;
+  d->bullets = NULL;
+  d->cat = NULL;
+}
+
 static void BossFightSceneExit(GameScene *self) {
   BossFightSceneData *d = (BossFightSceneData *)self->data;
   // 保存当前 HP 供下一关继承（失败/回菜单时由开始场景重置为 0）
@@ -817,5 +831,6 @@ GameScene *BossFightSceneCreate(const GameApp *app, int difficulty, int level) {
   scene->onDraw = BossFightSceneDraw;
   scene->onUpdate = BossFightSceneUpdate;
   scene->onExit = BossFightSceneExit;
+  scene->onDiscard = BossFightSceneDiscard; // 未 Enter 即被销毁时释放子对象
   return scene;
 }

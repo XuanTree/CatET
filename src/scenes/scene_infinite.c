@@ -844,6 +844,16 @@ static void InfiniteSceneDraw(GameScene *self) {
   }
 }
 
+// 场景创建后、onEnter 前被销毁（如过渡场景被中途打断时持有的未消费目标）
+// —— 仅释放工厂 Create 阶段预分配的子对象（player）。词库与贴图在 Enter
+// 才加载，由 Exit 释放；不在此处理。与 Exit 分离：Exit 假定 Enter 已执行，
+// 这里必须无副作用、可安全用于未初始化的零值 data。
+static void InfiniteSceneDiscard(GameScene *self) {
+  InfiniteSceneData *d = (InfiniteSceneData *)self->data;
+  free(d->player);
+  d->player = NULL;
+}
+
 static void InfiniteSceneExit(GameScene *self) {
   InfiniteSceneData *d = (InfiniteSceneData *)self->data;
 
@@ -893,6 +903,7 @@ GameScene *InfiniteSceneCreate(const GameApp *app, int difficulty) {
   scene->onUpdate = InfiniteSceneUpdate;
   scene->onDraw = InfiniteSceneDraw;
   scene->onExit = InfiniteSceneExit;
+  scene->onDiscard = InfiniteSceneDiscard; // 未 Enter 即被销毁时释放 player
   // onPause / onResume 本场景不需要，保持 NULL
   return scene;
 }

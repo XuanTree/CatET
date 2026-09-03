@@ -527,6 +527,18 @@ static void SpellSceneDraw(GameScene *self) {
   SpellDrawHud(d);
 }
 
+// 场景创建后、onEnter 前被销毁（如过渡场景被中途打断时持有的未消费目标）
+// —— 仅释放工厂 Create 阶段预分配的 cat / large_platform。贴图/词库在
+// Enter 才加载，由 Exit 释放；不在此处理。必须无副作用（Exit 会写回
+// app->playerHealth，不能用于未 Enter 的场景）。
+static void SpellSceneDiscard(GameScene *self) {
+  SpellSceneData *d = (SpellSceneData *)self->data;
+  free(d->cat);
+  free(d->large_platform);
+  d->cat = NULL;
+  d->large_platform = NULL;
+}
+
 static void SpellSceneExit(GameScene *self) {
   SpellSceneData *d = (SpellSceneData *)self->data;
   // 保存当前 HP 供下一关继承（失败/回菜单时由开始场景重置为 0）
@@ -577,6 +589,7 @@ GameScene *SpellSceneCreate(const GameApp *app, int difficulty, int level) {
   scene->onDraw = SpellSceneDraw;
   scene->onUpdate = SpellSceneUpdate;
   scene->onExit = SpellSceneExit;
+  scene->onDiscard = SpellSceneDiscard; // 未 Enter 即被销毁时释放子对象
 
   return scene;
 }

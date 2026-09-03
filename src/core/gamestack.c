@@ -64,6 +64,17 @@ static void FreeScene(GameScene *scene) {
   free(scene);
 }
 
+// 销毁「从未进入」的场景（见 gamestack.h）。与 FreeScene 的区别：只调用
+// onDiscard（工厂期资源释放），不调用 onExit（其假定 onEnter 已执行）。
+void GameSceneDiscard(GameScene *scene) {
+  if (!scene)
+    return;
+  if (scene->onDiscard)
+    scene->onDiscard(scene);
+  free(scene->data);
+  free(scene);
+}
+
 // 立即压入：覆盖当前栈顶（触发其 onPause），新场景触发 onEnter
 static void PushImmediate(GameStack *stack, GameScene *scene) {
   if (!scene)
@@ -147,9 +158,8 @@ static void FlushPending(GameStack *stack) {
       stack->wantsQuit = true;
       break;
     default:
-      // 未知请求：释放未消费的场景，避免内存泄漏
-      if (req->scene)
-        free(req->scene->data), free(req->scene);
+      // 未知请求：释放未消费的场景（未 Enter，走 onDiscard 而非 onExit）
+      GameSceneDiscard(req->scene);
       break;
     }
   }

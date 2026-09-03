@@ -48,6 +48,9 @@ struct GameScene {
   SceneDrawFn onDraw;     // 每帧绘制（仅当活跃或被允许隐藏绘制）
   SceneEventFn onPause;   // 被新场景覆盖时触发（可为 NULL）
   SceneEventFn onResume;  // 重新回到栈顶时触发（可为 NULL）
+  SceneEventFn onDiscard; // 创建后、onEnter 前被销毁时触发（可为 NULL）：
+                          // 仅释放工厂 Create 阶段预分配的子对象，不得含
+                          // 副作用（与 onExit 不同，后者假定 onEnter 已执行）
   void *data;             // 场景私有数据（栈负责释放）
   GameSceneFlags flags;
   GameStack *owner; // 所属栈：压入时由 GameStack 注入，场景回调可据此切换
@@ -56,6 +59,12 @@ struct GameScene {
 // 生命周期
 GameStack *GameStackCreate(void);
 void GameStackDestroy(GameStack *stack);
+
+// 销毁「从未进入」的场景（onEnter 未调用，如过渡场景被中途打断时持有的
+// 未消费目标场景）：调用 onDiscard（若有）释放工厂期资源，再 free
+// data 与 scene。不调用 onExit——onExit 假定 onEnter 已执行，可能包含
+// 恢复借用对象/下层场景状态等副作用。
+void GameSceneDiscard(GameScene *scene);
 
 // 场景切换请求：这些 API 不会立即修改栈，而是写入延迟请求队列，
 // 由 GameStackUpdate 在下一帧帧首统一应用，从而保证场景回调中任意

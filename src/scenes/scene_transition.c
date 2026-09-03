@@ -88,11 +88,12 @@ static void TransitionExit(GameScene *self) {
   TransitionData *d = (TransitionData *)self->data;
   // 正常路径：TransitionUpdate 已把 d->next 置 NULL（所有权转移给栈），
   // 此处为 NULL，不会释放。
-  // 异常路径：本场景被直接 Pop（next 未被消费），此处释放防泄漏。
-  // 注意：next 尚未压栈、onEnter 未调用，因此只释放内存、不调用 onExit。
+  // 异常路径：本场景被直接销毁（next 未被消费），此处释放防泄漏。
+  // next 尚未压栈、onEnter 未调用：GameSceneDiscard 只调 onDiscard
+  // （释放工厂 Create 阶段预分配的子对象）+ free，不调用 onExit（其可能
+  // 包含面向已进入场景的副作用，如写回 app->playerHealth）。
   if (d->next != NULL) {
-    free(d->next->data);
-    free(d->next);
+    GameSceneDiscard(d->next);
     d->next = NULL;
   }
 }
