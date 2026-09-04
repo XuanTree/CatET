@@ -187,6 +187,8 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   app.levelFinishSoundValid = IsSoundValid(app.levelFinishSound);
   app.pickLetterSound = LoadEmbeddedSound("assets/sounds/pick_letter.ogg");
   app.pickLetterSoundValid = IsSoundValid(app.pickLetterSound);
+  app.tickSound = LoadEmbeddedSound("assets/sounds/tick.ogg");
+  app.tickSoundValid = IsSoundValid(app.tickSound);
 
   // 全局 UI 字体：用 LoadFontEx 生成包含词库中文码点的像素字图集，
   // 供界面与中文释义共用；失败降级到默认字体。像素字体用点采样保持锐利。
@@ -365,6 +367,7 @@ void GameAppClose(GameApp *app) {
   UnloadSound(app->gameOverSound);
   UnloadSound(app->levelFinishSound);
   UnloadSound(app->pickLetterSound);
+  UnloadSound(app->tickSound);
   // 仅卸载真正加载的自定义字体（降级用的默认字体归 raylib 内部管理）
   if (app->uiFontLoaded) {
     UnloadFont(app->uiFont);

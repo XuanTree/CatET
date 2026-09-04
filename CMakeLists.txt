@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(CatET VERSION 0.4.1 LANGUAGES C)
+project(CatET VERSION 0.5.0 LANGUAGES C)
 
 # Generate compile_commands.json for clangd / language servers
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

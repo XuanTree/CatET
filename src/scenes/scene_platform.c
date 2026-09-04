@@ -55,6 +55,7 @@ typedef struct PlatformSceneData {
   int level;
   int difficulty;
   float timeLeft;
+  int lastTickSecond; // 最近一次 tick 的剩余整秒刻度（0=未提示，见 timer.h）
   Rectangle source;
   Rectangle enemySource[ENEMY_MAX_NUM]; // 敌怪当前动画帧源矩形
   bool enemyWasCountdown
@@ -70,8 +71,25 @@ static void PlatformOnBattle(void *ctx) {
   Enemy *e = &d->enemies[bc->enemyIndex];
   GameStackPush(
       self->owner,
-      TransitionSceneCreate(
-          d->app, BattleSceneCreate(d->app, &d->cat, e, self, d->difficulty)));
+      TransitionSceneCreate(d->app,
+                            BattleSceneCreate(d->app, &d->cat, e, self,
+                                              d->level, d->difficulty)));
+}
+
+// 环境惩罚扣血（限时超时 / 坠落重生）统一入口：扣血、钳制下限，并同步
+// lastHealth、原地触发 HIT 动画与受伤音效。与 UpdatePlayer 内置的“生命值
+// 下降检测”不同——该检测会给玩家施加 -260 的受击上跳击退；超时/坠落本与
+// 受击无关，若恰好发生在玩家起跳瞬间，会让玩家误以为“跳跃触发了扣血”
+// （低概率复现的体感 BUG）。同步 lastHealth 后该检测不再触发，改为原地受
+// 伤表现（与 scene_battle 的 BattleDamagePlayer 同款思路）。
+static void PlatformDamagePlayer(PlatformSceneData *d, float amount) {
+  Player *player = &d->cat;
+  player->health -= amount;
+  if (player->health < 0.f)
+    player->health = 0.f;
+  player->lastHealth = player->health; // 同步基准，避免 UpdatePlayer 二次触发击退/音效
+  PlayerTriggerHit(player);            // 原地触发 HIT 动画（扣血仍有反馈）
+  GameAppPlaySound(d->app, d->app->catHitSound, d->app->catHitSoundValid);
 }
 
 // 掉落重生（定义在下方，先声明供 PlatformSceneUpdate 使用）
@@ -263,8 +281,9 @@ static void PlatformSceneEnter(GameScene *self) {
   d->source =
       AnimationUpdate(&d->cat.animations[d->cat.playerAnimationState], 0.f);
 
-  // 关卡限时：进入关卡重置倒计时
+  // 关卡限时：进入关卡重置倒计时（剩余警告刻度随之复位）
   d->timeLeft = PLATFORM_TIME_LIMIT;
+  d->lastTickSecond = 0;
 
   // 初始化相机
   InitSceneCamera(&d->sceneCamera, d->app->logicWidth, d->app->logicHeight,
@@ -352,14 +371,18 @@ static void PlatformSceneUpdate(GameScene *self, float dt) {
     return;
   }
 
-  // 关卡限时：倒计时归零扣血并重置（给玩家继续本关的机会）
+  // 关卡限时：倒计时归零扣血并重置（给玩家继续本关的机会）。环境惩罚统一走
+  // PlatformDamagePlayer（原地 HIT，不做受击击退，避免与跳跃动作混淆）
   d->timeLeft -= dt;
   if (d->timeLeft <= 0.f) {
-    d->cat.health -= TIME_PENALTY;
-    if (d->cat.health < 0.f)
-      d->cat.health = 0.f;
+    PlatformDamagePlayer(d, TIME_PENALTY);
     d->timeLeft = PLATFORM_TIME_LIMIT;
   }
+  // 剩余时间进入最后 COUNTDOWN_WARN_SECONDS 秒后，每跨一个整秒播放一次
+  // tick 提示音（跨过 5/4/3/2/1 秒整各一声；归零/重置后自动重新武装）
+  if (TimerCountdownWarn(&d->lastTickSecond, d->timeLeft,
+                         COUNTDOWN_WARN_SECONDS))
+    GameAppPlaySound(d->app, d->app->tickSound, d->app->tickSoundValid);
 
   // 触碰敌怪瞬间（isCountdown 上升沿）：播放 meet_the_enemy
   // 音效（画面定格开始）
@@ -460,9 +483,7 @@ static void RespawnIfFallen(PlatformSceneData *d, Player *player) {
                 groundTop - player->size.y};
   player->velocity = (Vector2){0.f, 0.f};
   player->isOnTheGround = true;
-  player->health -= player->maxHealth * FALL_PENALTY_RATIO; // 掉落惩罚
-  if (player->health < 0.f)
-    player->health = 0.f;
+  PlatformDamagePlayer(d, player->maxHealth * FALL_PENALTY_RATIO); // 掉落惩罚
 }
 
 GameScene *PlatformSceneCreate(const GameApp *app, int difficulty, int level) {

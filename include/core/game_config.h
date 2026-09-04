@@ -52,6 +52,11 @@
 #define SPELL_WRONG_PENALTY 15.0f
 #define MAZE_WRONG_PENALTY 15.0f
 
+// 倒计时剩余警告阈值（秒）：所有带 HUD 倒计时的关卡（平台/极速拼写/迷宫）
+// 剩余时间进入最后该秒数后，每跨一个整秒播放一次 tick.ogg（见 tools/timer 的
+// TimerCountdownWarn 与各场景 Update 调用）：跨过 5、4、3、2、1 秒整各一声。
+#define COUNTDOWN_WARN_SECONDS 5.0f
+
 // ── 战斗（三选一，scene_battle）─────────────────────────────────────────────
 // 拼写错误惩罚：Easy 20 / Normal 25 / Hard 30（由 1.5^d 改为 1.25^d 取整，
 // 降低难度陡峭度）；弹幕伤害浮动 3~8（Hard 波次多，上限 9→8 补偿）。

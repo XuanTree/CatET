@@ -1,8 +1,8 @@
 #include "game.h"
 
-// boss 尺寸：贴图 32×32 × GAME_SCALE，比普通敌人适当放大
-#define BOSS_WIDTH (32.f * GAME_SCALE)
-#define BOSS_HEIGHT (32.f * GAME_SCALE)
+// boss 尺寸：贴图 24x24 × GAME_SCALE，比普通敌人适当放大
+#define BOSS_WIDTH (24.f * GAME_SCALE)
+#define BOSS_HEIGHT (24.f * GAME_SCALE)
 // boss 移动速度（世界坐标/秒）；boss 不受重力，可自由飞行
 #define BOSS_MOVE_SPEED 120.f
 // boss 发射弹幕间隔（秒）
@@ -33,6 +33,7 @@ void InitBoss(Boss *boss, Vector2 spawn_pos) {
   boss->isCoolDown = false;
   boss->isMovable = true;
   boss->isAlive = true;
+  boss->isFacingRight = true;
 }
 
 // 每帧更新：推进动画、位移与发射冷却计时。
@@ -45,6 +46,9 @@ void UpdateBoss(Boss *boss, float dt) {
 
   // 移动：示例逻辑（恒定向右），后续可替换为往返巡逻 / 追踪玩家等行为
   boss->velocity.x = boss->isMovable ? BOSS_MOVE_SPEED : 0.f;
+  if (boss->velocity.x < 0.f) {
+    boss->isFacingRight = !boss->isFacingRight;
+  }
   boss->position.x += boss->velocity.x * dt;
   boss->position.y += boss->velocity.y * dt;
 
@@ -62,6 +66,11 @@ void UpdateBoss(Boss *boss, float dt) {
 void DrawBoss(Boss *boss, Rectangle source) {
   if (!boss || !boss->isAlive)
     return;
+  // boss 水平翻转
+  if (!boss->isFacingRight) {
+    source.x = source.x + source.width;
+    source.width = -source.width;
+  }
 
   Rectangle dest = {
       .x = boss->position.x,

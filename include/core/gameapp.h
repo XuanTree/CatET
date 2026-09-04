@@ -69,6 +69,8 @@ typedef struct GameApp {
   bool levelFinishSoundValid; // 是否成功加载（无效时静默跳过播放）
   Sound pickLetterSound;      // 迷宫关卡拾取字母音效（pick_letter.ogg）
   bool pickLetterSoundValid;  // 是否成功加载（无效时静默跳过播放）
+  Sound tickSound;            // 关卡倒计时剩余警告音效（tick.ogg）
+  bool tickSoundValid;        // 是否成功加载（无效时静默跳过播放）
 
   Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
   bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）

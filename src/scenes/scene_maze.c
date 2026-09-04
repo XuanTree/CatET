@@ -54,6 +54,7 @@ typedef struct MazeData {
   bool letterSpotIsDeadEnd[MAZE_MAX_LETTERS]; // 对应落点所在房间是否为死胡同
   int letterSpotCount;
   float timeLeft;   // 关卡倒计时（秒）
+  int lastTickSecond; // 最近一次 tick 的剩余整秒刻度（0=未提示，见 timer.h）
   int difficulty;   // 难度（传给下一关）
   int level;        // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
   GameStack *owner; // 所属栈（MazeEnter 捕获 self->owner，供拼写事件切换场景）
@@ -446,6 +447,7 @@ static void MazeEnter(GameScene *self) {
   CharacterPlaceLetters(&d->character, spots, spotIsDeadEnd, spotCount,
                         DISTRACTOR_COUNT);
   d->timeLeft = MAZE_TIME_LIMIT;
+  d->lastTickSecond = 0;
 
   // 隐式全局计时器：进入第一关开始计时（后续关卡保持累计）
   if (d->level == 1)
@@ -608,6 +610,11 @@ static void MazeUpdate(GameScene *self, float dt) {
     d->cat.health -= TIME_PENALTY;
     d->timeLeft = MAZE_TIME_LIMIT;
   }
+  // 剩余时间进入最后 COUNTDOWN_WARN_SECONDS 秒后，每跨一个整秒播放一次
+  // tick 提示音（跨过 5/4/3/2/1 秒整各一声；归零/重置后自动重新武装）
+  if (TimerCountdownWarn(&d->lastTickSecond, d->timeLeft,
+                         COUNTDOWN_WARN_SECONDS))
+    GameAppPlaySound(d->app, d->app->tickSound, d->app->tickSoundValid);
 
   // 平台跳跃物理：先更新（重力/跳跃/移动），再解析实心墙体碰撞
   UpdatePlayer(&d->cat, dt);

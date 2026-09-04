@@ -36,6 +36,13 @@ void UpdateBullet(Bullet *bullet, float dt);
 // 绘制子弹
 void DrawBullet(Bullet *bullet);
 
+// 弹幕的命中判定圆（视觉内容圆）：写回圆心（世界坐标）与半径。
+// 弹幕贴图为 16×16 内居中的 12×12 圆形内容，绘制/离屏/消失判定仍用整幅
+// 方盒 size（24×24）；但命中若也用方盒，方形四角会在斜向接近时先于视觉
+// 球体触发命中，观感“还没碰到就受伤”。命中判定请用本接口返回的圆配合
+// 玩家受击盒 PlayerHitRect 做圆-矩形检测。
+void BulletHitCircle(const Bullet *bullet, Vector2 *outCenter, float *outRadius);
+
 // ── 弹幕 pattern（敌怪攻击模板）──────────────────────────────────────────
 // 敌怪每次攻击随机选择一种 pattern（共 10 种），数量也在区间内随机，增加玩法
 // 多样性。均由「初始速度/位置排布」构成，无需逐帧特殊状态。

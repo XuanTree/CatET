@@ -49,6 +49,7 @@ typedef struct SpellSceneData {
 
   // Data
   float timeLeft;
+  int lastTickSecond; // 最近一次 tick 的剩余整秒刻度（0=未提示，见 timer.h）
   int difficulty;
   int level;
 
@@ -382,6 +383,7 @@ static void SpellSceneEnter(GameScene *self) {
   // 初始谜题 + 初始字母批 + 重置关卡状态
   CharacterSetupPuzzle(&d->character);
   d->timeLeft = SPELL_TIME_LIMIT;
+  d->lastTickSecond = 0;
   d->fallingCount = 0;
   d->transitionRequested = false;
   // 字母批仅在「填对一个挖空后」掉落下一批（见 SpellOnSpellCorrect），
@@ -412,6 +414,11 @@ static void SpellSceneUpdate(GameScene *self, float dt) {
     d->timeLeft = SPELL_TIME_LIMIT;
     return;
   }
+  // 剩余时间进入最后 COUNTDOWN_WARN_SECONDS 秒后，每跨一个整秒播放一次
+  // tick 提示音（跨过 5/4/3/2/1 秒整各一声；归零/重置后自动重新武装）
+  if (TimerCountdownWarn(&d->lastTickSecond, d->timeLeft,
+                         COUNTDOWN_WARN_SECONDS))
+    GameAppPlaySound(d->app, d->app->tickSound, d->app->tickSoundValid);
 
   // 字母批仅在「填对一个挖空后」掉落下一批（见 SpellOnSpellCorrect），
   // 无需按时间周期掉落

@@ -53,6 +53,25 @@ void DrawBullet(Bullet *bullet) {
                  WHITE);
 }
 
+// 弹幕视觉内容圆：贴图为 16×16 内居中的 12×12 圆形（左右上下各留 2px），
+// 圆心与贴图中心重合，半径 = size.x * (12/16) / 2 = size.x * 0.375。
+void BulletHitCircle(const Bullet *bullet, Vector2 *outCenter,
+                     float *outRadius) {
+  if (!bullet) {
+    if (outCenter)
+      *outCenter = (Vector2){0.f, 0.f};
+    if (outRadius)
+      *outRadius = 0.f;
+    return;
+  }
+  const float radius = bullet->size.x * (12.0f / 16.0f) * 0.5f;
+  if (outCenter)
+    *outCenter = (Vector2){bullet->position.x + bullet->size.x * 0.5f,
+                           bullet->position.y + bullet->size.y * 0.5f};
+  if (outRadius)
+    *outRadius = radius;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 弹幕 pattern：敌怪每次攻击随机选择一种（共 10 种），数量也随机，增加玩法
 // 多样性。均由「初始速度/位置排布」构成（无需逐帧特殊状态），统一用

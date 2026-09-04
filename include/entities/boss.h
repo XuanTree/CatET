@@ -44,6 +44,7 @@ typedef struct Boss {
   bool isCoolDown;
   bool isMovable;
   bool isAlive;
+  bool isFacingRight;
 } Boss;
 
 void InitBoss(Boss *boss, Vector2 spawn_pos);

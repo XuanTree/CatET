@@ -55,6 +55,12 @@ typedef struct Player {
 void InitPlayer(Player *player);
 void UpdatePlayer(Player *player, float dt);
 void DrawPlayer(Player *player, Rectangle source);
+// 玩家命中/受击盒（世界坐标矩形）：比 player->size 整幅略小、居中于精灵主体
+// （玩家帧贴图 16×16 内主体约占 x[1..14]、y[2..14]，四周为透明/轮廓留白）。
+// 弹幕等“精确命中”判定应使用本接口（配合 BulletHitCircle 做圆-矩形检测），
+// 避免弹幕仅贴到透明边缘/轮廓就被判定命中、造成“还没碰到就受伤”的观感。
+// 平台/地面/敌怪/旗子等仍用 player->size 整盒，保证落地与触碰判定不悬浮。
+Rectangle PlayerHitRect(const Player *player);
 // 纯矩形地面碰撞：groundWidth 为地面宽度（调用场景须传入与自身绘制一致的
 // 宽度，例如平台关卡传 logicWidth、测试关卡传
 // 1000，避免碰撞面与可视地面错位）。

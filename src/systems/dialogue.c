@@ -10,6 +10,11 @@ typedef enum DialogueType {
   SENTENCE_3,
   SENTENCE_4,
   SENTENCE_5,
+  SENTENCE_6,
+  SENTENCE_7,
+  SENTENCE_8,
+  SENTENCE_9,
+  SENTENCE_10,
   TIP,
   TOTAL_DIALOGUE_TYPES
 } DialogueType;
@@ -34,7 +39,17 @@ const char *getDialogue() {
   case SENTENCE_4:
     return "i don't know what to say";
   case SENTENCE_5:
-    return "dodge the bullets, watch ur butts"; // 依旧故意的
+    return "please!!! dodge the bullets"; // 依旧故意的
+  case SENTENCE_6:
+    return "to be or not to be";
+  case SENTENCE_7:
+    return "whats the point?";
+  case SENTENCE_8:
+    return "cet isnt that hard you imagine";
+  case SENTENCE_9:
+    return "again? im tired...";
+  case SENTENCE_10:
+    return "15? 17?";
   case TIP:
     return "tip: use the arrow keys to pick the answer";
   default:

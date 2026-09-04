@@ -46,6 +46,12 @@
 #define BATTLE_ROUNDS_MIN 1   // 所需答对单词数通用下限
 #define BATTLE_ROUNDS_MAX 4   // 所需答对单词数通用上限
 #define BATTLE_WIN_DELAY 0.8f // 胜利后画面停顿时长（预留胜利音效播放窗口）
+// 敌怪对话框几何（DrawDialogueBox 与答错复习横幅共用；横幅置于其正下方留白处，
+// 保证不被对话框遮挡）：
+#define BATTLE_DIALOGUE_X 80 // 对话框水平外边距（居中于敌怪正下方）
+#define BATTLE_DIALOGUE_Y 72 // 对话框顶端（敌怪占 20~68，紧随其正下方）
+#define BATTLE_DIALOGUE_H 76 // 对话框高度（底边 = Y+H = 148）
+#define BATTLE_REVIEW_GAP 8  // 复习横幅与对话框底边的垂直间隙
 // 敌怪说话机制（dialogue 系统，见 dialogue.h）：
 #define BATTLE_DIALOGUE_CHAR_TIME 0.04f // 逐字输出的每字间隔（秒，较快吐字）
 #define BATTLE_DIALOGUE_MAX_TIME                                               \
@@ -90,7 +96,8 @@ typedef struct BattleSceneData {
       *returnScene; // 战斗结束返回的关卡场景（设计文档约定；实际经 Pop 返回）
 
   SceneCamera camera; // 锁定镜头（禁用，固定视野，战斗在逻辑屏幕坐标进行）
-  int difficulty;
+  int difficulty;     // 难度 0/1/2（惩罚/弹幕量，见 game_config）
+  int level;          // 所在平台关卡号（创建时注入；错词按关复现，见 study）
 
   Rectangle playerSource; // 玩家当前动画帧源矩形
   Rectangle enemySource;  // 敌怪当前动画帧源矩形
@@ -118,6 +125,14 @@ typedef struct BattleSceneData {
   WordEntry options[3]; // 三个候选单词（含正确与干扰）
   int answerIndex;      // 正确单词在 options 中的下标
   int selectIndex;      // 玩家当前选中的选项下标
+
+  // 学习机制（study_tracker，见 systems/study_tracker.h）：绑定 GameApp 全局
+  // 错词本/间隔重复抽词 —— 每道题的答案词优先复现到期错词（拼错后隔若干关
+  // 再次考到），答对/答错分别标记，与拼写类关卡共用同一套记录。
+  StudyTracker *study; // 指向 app->study（Enter 时绑定，不拥有）
+  const WordEntry
+      *answerRef;    // 本回合答案词在 d->bank 内的指针（兜底词为 NULL）
+  char lastWord[64]; // 上一题答案词文本（抽词排除，避免立即重复）
 
   // 按难度预计算的伤害/惩罚；弹幕为浮动伤害 3~8（game_config），
   // 在 FireVolley 发射后逐颗随机，不再按难度预计算
@@ -179,6 +194,8 @@ static const WordEntry *PickQualityDistractor(const WordsBank *bank,
 }
 
 // 从词库抽取答案词与两个不同的干扰词，洗牌放入 options[3] 并记录答案下标。
+// 绑定错词本时答案词优先用间隔重复抽词（StudyPickWord，排除上一题答案词，
+// 避免同题连续重复；见 systems/study_tracker）；未绑定/词库为空时回退随机。
 // 词库为空/单词不足时用兜底词条（防御，保证场景仍可运行，与 Character 的
 // "cat" 兜底思路一致）。干扰词优先「同词性 +
 // 长度相近」（PickQualityDistractor）， 采样不足时回退纯随机。
@@ -189,10 +206,28 @@ static void SetupChoices(BattleSceneData *d) {
       {"run", "v. 跑", "v."},
   };
 
-  // 答案词：从词库随机抽取，词库为空时用兜底
-  const WordEntry *ans = WordsBankPickRandom(&d->bank);
-  if (!ans)
+  // 答案词：学习机制优先复现错词，未命中时回退词库随机，再为空用兜底。
+  // ansInBank 标记答案是否来自词库（兜底词不在词库内，无法按下标标记，
+  // answerRef 置 NULL，StudyMark* 对 NULL 安全降级）
+  const WordEntry *ans = NULL;
+  bool ansInBank = false;
+  if (d->study) {
+    ans =
+        StudyPickWord(d->study, (d->lastWord[0] != '\0') ? d->lastWord : NULL);
+    if (ans)
+      ansInBank = true;
+  }
+  if (!ans) {
+    ans = WordsBankPickRandom(&d->bank);
+    if (ans)
+      ansInBank = true;
+  }
+  if (!ans) {
     ans = &kFallback[0];
+    ansInBank = false;
+  }
+  d->answerRef = ansInBank ? ans : NULL;
+  snprintf(d->lastWord, sizeof(d->lastWord), "%s", ans->word);
 
   // 两个与答案不同的干扰词：优先高质量干扰词（同词性、长度相近），
   // 采样不足时回退纯随机（词库不足时用兜底补齐，保证必有 3 个选项）
@@ -370,12 +405,18 @@ static void UpdatePlayerTurn(BattleSceneData *d, float dt) {
       // 选对：答对数 +1（胜利条件为答对 totalRounds 个单词）
       d->lastResult = BATTLE_RESULT_CORRECT;
       d->correctCount++;
+      // 学习机制：该词本局答对（记入已答对并清除其错词记录）
+      if (d->study)
+        StudyMarkCorrect(d->study, d->answerRef);
     } else {
       // 选错：不推进答对进度，扣除生命值（随难度递增）。统一走
       // BattleDamagePlayer 扣血并同步 lastHealth——避免进入敌怪回合后
       // UpdatePlayer 检测到血量下降触发多余的击退/受伤效果，把玩家弹进弹幕
       // 造成第二次伤害。
       BattleDamagePlayer(d, d->wrongPenalty);
+      // 学习机制：该词本局拼错（之后按间隔复现；即使本击致命也先记录）
+      if (d->study)
+        StudyMarkWrong(d->study, d->answerRef, d->level);
       if (player->health <= 0.f) {
         d->phase = BATTLE_PHASE_LOSE;
         return;
@@ -489,11 +530,14 @@ static void UpdateEnemyDodge(BattleSceneData *d, float dt) {
       b->isActive = false;
       continue;
     }
-    // 命中玩家 → 扣血并销毁（docs：被玩家击中消失）
-    Rectangle pr = {player->position.x, player->position.y, player->size.x,
-                    player->size.y};
-    Rectangle br = {b->position.x, b->position.y, b->size.x, b->size.y};
-    if (CheckCollisionRecs(pr, br)) {
+    // 命中玩家 → 扣血并销毁（docs：被玩家击中消失）。用玩家受击盒（精灵
+    // 主体，略小于整幅）与弹幕视觉内容圆做圆-矩形检测：若按双方整幅方盒
+    // 判定，方形四角/透明边会在视觉上未接触时就触发命中（“还没碰到就受伤”）。
+    Rectangle pr = PlayerHitRect(player);
+    Vector2 bCenter;
+    float bRadius;
+    BulletHitCircle(b, &bCenter, &bRadius);
+    if (CheckCollisionCircleRec(bCenter, bRadius, pr)) {
       // 无敌期间：弹幕穿身而过，不扣血、不销毁（命中后获得短暂免伤窗口，
       // 避免弹幕雨/环形弹幕在同帧或连续数帧内多次命中造成连续扣血）
       if (player->invincibleTimer > 0.f)
@@ -621,6 +665,18 @@ static void BattleEnter(GameScene *self) {
   if (d->difficulty >= 2)
     relPath = "assets/words/CET6.txt";
   WordsBankLoadEmbedded(&d->bank, relPath);
+
+  // 学习机制：绑定全局错词本/间隔重复抽词（跨关卡共享；新游戏已在开始菜单
+  // 重置，见 StudyReset）。战斗发生在平台关卡内，错词按该关 level 复现；
+  // 词库尺寸与所在平台关一致（同难度同文件），Rebind 保留既有错词记录。
+  d->study = NULL;
+  d->answerRef = NULL;
+  d->lastWord[0] = '\0';
+  if (d->app->study) {
+    StudyRebind(d->app->study, &d->bank);
+    d->app->study->currentLevel = d->level;
+    d->study = d->app->study;
+  }
 
   // 难度影响：拼写错误惩罚按难度取值（easy 20 / normal 25 / hard 30，见
   // game_config）；弹幕为浮动伤害 3~8，在 FireVolley 发射时逐颗随机，
@@ -762,16 +818,15 @@ static void DrawBattleHud(BattleSceneData *d) {
       words[i] = d->options[i].word;
     Rectangle rects[3];
     const int fs = HudLayoutWordRow(
-        d->app, words, 3, (float)screenW, 16 /*gap*/, 16 /*padX*/,
-        20 /*base*/, 14 /*min*/, 120.0f /*minW*/, boxH, boxY, rects);
+        d->app, words, 3, (float)screenW, 16 /*gap*/, 16 /*padX*/, 20 /*base*/,
+        14 /*min*/, 120.0f /*minW*/, boxH, boxY, rects);
 
     for (int i = 0; i < 3; i++) {
       Rectangle rec = rects[i];
       const bool selected = (i == d->selectIndex);
       // 选中项高亮；不直接暴露答案（玩家凭「词性+汉语」提示自行判断）
       DrawRectangleRec(rec, selected ? Fade(WHITE, 0.18f) : Fade(WHITE, 0.06f));
-      DrawRectangleLinesEx(rec, selected ? 2.f : 1.f,
-                           selected ? YELLOW : GRAY);
+      DrawRectangleLinesEx(rec, selected ? 2.f : 1.f, selected ? YELLOW : GRAY);
       const int tw = GameAppMeasureText(d->app, d->options[i].word, fs);
       GameAppDrawText(d->app, d->options[i].word,
                       (int)(rec.x + rec.width * 0.5f) - tw / 2,
@@ -818,10 +873,10 @@ static void DrawDialogueBox(BattleSceneData *d) {
     return;
 
   const int screenW = d->app->logicWidth;
-  const int boxX = 80; // 居中于敌怪正下方
+  const int boxX = BATTLE_DIALOGUE_X; // 居中于敌怪正下方
   const int boxW = screenW - 2 * boxX;
-  const int boxH = 76;
-  const int boxY = 72; // 敌怪占 20~68，对话框紧随其正下方
+  const int boxH = BATTLE_DIALOGUE_H;
+  const int boxY = BATTLE_DIALOGUE_Y; // 敌怪占 20~68，对话框紧随其正下方
 
   // 白底黑字：白底 + raygui 边框 + 黑色对话文本
   Rectangle box = {(float)boxX, (float)boxY, (float)boxW, (float)boxH};
@@ -842,6 +897,40 @@ static void DrawDialogueBox(BattleSceneData *d) {
   GameAppDrawText(d->app, skip,
                   boxX + boxW - 14 - GameAppMeasureText(d->app, skip, 16),
                   boxY + boxH - 26, 16, DARKGRAY);
+}
+
+// 答错后的 study 复习横幅（学习机制，思路同 maze/spell/bossfight 的
+// CharacterDrawReviewBanner）：答错进入敌怪回合后，随敌怪说话显示上一题
+// 「正确答案（词性+中文释义）」，白底绿框黑字。定位在敌怪对话框
+// （y = BATTLE_DIALOGUE_Y ~ +BATTLE_DIALOGUE_H，即 72~148）正下方的留白区；
+// 只在敌怪说话（打字/完整显示）阶段显示，进入弹幕躲避即隐藏，避免遮挡走位。
+// 绘制顺序在 DrawDialogueBox 之后（见 BattleDraw），保证不被对话框遮挡。
+static void DrawBattleReviewBanner(BattleSceneData *d) {
+  if (d->phase != BATTLE_PHASE_ENEMY_TURN)
+    return;
+  if (d->enemyStage != ENEMY_TALK_TYPING && d->enemyStage != ENEMY_TALK_HOLD)
+    return;
+  if (d->lastResult != BATTLE_RESULT_WRONG) // 仅答错后显示（选对不弹复习）
+    return;
+
+  const int screenW = d->app->logicWidth;
+  const WordEntry *ans = &d->options[d->answerIndex]; // 上题正确答案
+  char line[384];
+  snprintf(line, sizeof(line), "正确：%s  (%s %s)", ans->word, ans->pos,
+           ans->meaning);
+  const int fs = 18;
+  const int tw = GameAppMeasureText(d->app, line, fs);
+  const float pad = 14.0f;
+  const float bw = (float)tw + pad * 2.0f;
+  const float bh = (float)fs + 20.0f;
+  const float bx = ((float)screenW - bw) * 0.5f;
+  const float by =
+      (float)(BATTLE_DIALOGUE_Y + BATTLE_DIALOGUE_H) + BATTLE_REVIEW_GAP;
+
+  // 白底绿框黑字（与其它学习关卡的复习横幅配色一致）
+  DrawRectangle((int)bx, (int)by, (int)bw, (int)bh, Fade(WHITE, 0.92f));
+  DrawRectangleLines((int)bx, (int)by, (int)bw, (int)bh, GREEN);
+  GameAppDrawText(d->app, line, (int)(bx + pad), (int)(by + 10.0f), fs, BLACK);
 }
 
 static void BattleDraw(GameScene *self) {
@@ -887,6 +976,9 @@ static void BattleDraw(GameScene *self) {
   // 敌怪对话框（说话/攻击停顿阶段，白底黑字）
   DrawDialogueBox(d);
 
+  // 答错复习横幅：置于对话框正下方；绘制顺序在对话框之后，保证不被其遮挡
+  DrawBattleReviewBanner(d);
+
   // HUD（固定逻辑屏幕坐标）
   DrawBattleHud(d);
 }
@@ -920,7 +1012,8 @@ static void BattleExit(GameScene *self) {
 }
 
 GameScene *BattleSceneCreate(const GameApp *app, Player *player, Enemy *enemy,
-                             GameScene *returnScene, int difficulty) {
+                             GameScene *returnScene, int level,
+                             int difficulty) {
   GameScene *scene = (GameScene *)calloc(1, sizeof(GameScene));
   if (scene == NULL) {
     return NULL;
@@ -934,6 +1027,7 @@ GameScene *BattleSceneCreate(const GameApp *app, Player *player, Enemy *enemy,
   data->player = player;
   data->enemy = enemy;
   data->returnScene = returnScene;
+  data->level = level;
   data->difficulty = difficulty;
 
   scene->name = "BattleScene";

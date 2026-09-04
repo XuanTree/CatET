@@ -197,6 +197,25 @@ void DrawPlayer(Player *player, Rectangle source) {
   }
 }
 
+// 玩家命中/受击盒（世界坐标）：精灵帧 16×16 内主体约占中央 x[1..14]、
+// y[2..14]，四周为透明/轮廓留白。返回值相对 player->size 整幅收窄：
+//   左/右各内缩 1px、顶部内缩 2px、底部内缩 1px（×GAME_SCALE 换算为世界），
+// 结果矩形与整盒同锚点方向（左上角右移 3、下移 6，宽 42、高 39）。
+Rectangle PlayerHitRect(const Player *player) {
+  if (!player)
+    return (Rectangle){0, 0, 0, 0};
+  const float insetLeft = 1.0f * GAME_SCALE;
+  const float insetTop = 2.0f * GAME_SCALE;
+  const float insetRight = 1.0f * GAME_SCALE;
+  const float insetBottom = 1.0f * GAME_SCALE;
+  return (Rectangle){
+      .x = player->position.x + insetLeft,
+      .y = player->position.y + insetTop,
+      .width = player->size.x - insetLeft - insetRight,
+      .height = player->size.y - insetTop - insetBottom,
+  };
+}
+
 // 纯矩形地面碰撞：地面视为一个静态矩形（顶面位于 y = LOGIC_HEIGHT - 50 =
 // 430，高度固定 50）。用玩家矩形与地面矩形做 AABB 重叠检测
 // （CheckCollisionRecs），重叠时把玩家推出地面：

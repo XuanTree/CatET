@@ -101,8 +101,9 @@ static void TestOnBattle(void *ctx) {
   TestData *d = (TestData *)self->data;
   GameStackPush(self->owner,
                 TransitionSceneCreate(
-                    d->app, BattleSceneCreate(d->app, &d->cat, &d->enemy, self,
-                                              d->difficulty)));
+                    d->app,
+                    BattleSceneCreate(d->app, &d->cat, &d->enemy, self,
+                                      d->level, d->difficulty)));
 }
 
 static void TestEnter(GameScene *self) {

@@ -289,6 +289,7 @@ static void BossFightUpdateBoss(BossFightSceneData *d, float dt) {
     d->bossDir = -1;
   }
 
+  boss->isFacingRight = d->bossDir > 0; // 为boss做水平翻转
   // 开场备战：boss 先不攻击（给玩家熟悉拼写的时间）
   if (!d->bossCanShoot) {
     d->afkGrace += dt;
@@ -349,11 +350,14 @@ static void BossFightUpdateBullets(BossFightSceneData *d, float dt) {
       b->isActive = false;
       continue;
     }
-    // 命中玩家 → 扣血并销毁
-    const Rectangle pr = {player->position.x, player->position.y,
-                          player->size.x, player->size.y};
-    const Rectangle br = {b->position.x, b->position.y, b->size.x, b->size.y};
-    if (CheckCollisionRecs(pr, br)) {
+    // 命中玩家 → 扣血并销毁。用玩家受击盒（精灵主体，略小于整幅）与弹幕
+    // 视觉内容圆做圆-矩形检测，避免双方整幅方盒四角在视觉接触前就触发命中
+    // （“还没碰到就受伤”的观感）。
+    const Rectangle pr = PlayerHitRect(player);
+    Vector2 bCenter;
+    float bRadius;
+    BulletHitCircle(b, &bCenter, &bRadius);
+    if (CheckCollisionCircleRec(bCenter, bRadius, pr)) {
       // 无敌期间：弹幕穿身而过，不扣血、不销毁（命中后短暂免伤窗口，
       // 避免多颗弹幕在连续帧内多次命中造成连续扣血）
       if (player->invincibleTimer > 0.0f)
