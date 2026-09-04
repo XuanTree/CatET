@@ -1,5 +1,10 @@
 # CatET — Cat's English Trial
 
+![GitHub License](https://img.shields.io/github/license/XuanTree/CatET)
+[![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11)](https://www.microsoft.com/windows)
+![Linux](https://img.shields.io/badge/Linux-Supported-4caf50?logo=linux&logoColor=white)
+![Static Badge](https://img.shields.io/badge/RayLib_Game-RayGUI_App-blue)
+
 > **Cat's English Trial（小猫的英语试炼）** — a 2D platformer that helps you memorize
 > English words while playing. Inspired by the CET (College English Test) exams.
 
