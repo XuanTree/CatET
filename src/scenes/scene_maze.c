@@ -53,10 +53,10 @@ typedef struct MazeData {
   Vector2 letterSpots[MAZE_MAX_LETTERS];      // 字母候选落点（迷宫各房间）
   bool letterSpotIsDeadEnd[MAZE_MAX_LETTERS]; // 对应落点所在房间是否为死胡同
   int letterSpotCount;
-  float timeLeft;   // 关卡倒计时（秒）
+  float timeLeft;     // 关卡倒计时（秒）
   int lastTickSecond; // 最近一次 tick 的剩余整秒刻度（0=未提示，见 timer.h）
-  int difficulty;   // 难度（传给下一关）
-  int level;        // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
+  int difficulty;     // 难度（传给下一关）
+  int level;          // 当前关卡编号（创建时注入，通关后经 level_flow 推进）
   GameStack *owner; // 所属栈（MazeEnter 捕获 self->owner，供拼写事件切换场景）
   // 可复用的字母拾取 + 拼写检查组件（词库、谜题、字母实体、交互状态均在其中）
   Character character;
@@ -377,6 +377,8 @@ static void MazeOnSpellWrong(void *ctx);
 
 static void MazeEnter(GameScene *self) {
   MazeData *d = (MazeData *)self->data;
+  // 关卡 BGM：平台/迷宫/拼写共用「Find The Letter.mp3」
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_PLAY);
 
   d->cat = (Player){0};
   InitPlayer(&d->cat);

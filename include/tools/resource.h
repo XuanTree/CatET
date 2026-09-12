@@ -35,6 +35,11 @@ Texture2D LoadEmbeddedTexture(const char *path);
 // 从内存解码为 Sound（内部临时 Wave 已自动释放）。
 Sound LoadEmbeddedSound(const char *path);
 
+// 从内存流式加载为 Music（等价 LoadMusicStreamFromMemory 的语义）。
+// 注意：Music 流式播放期间会持续读取传入的内存缓冲，内嵌资源为静态常量数组、
+// 生命周期贯穿整个进程，因此可安全长期持有，直到 UnloadMusicStream。
+Music LoadEmbeddedMusic(const char *path);
+
 // 从内存解码为 Font（等价 LoadFontEx 的码点/字号语义）。
 Font LoadEmbeddedFontEx(const char *path, int fontSize, int *codepoints,
                         int cpCount);

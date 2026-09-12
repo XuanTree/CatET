@@ -43,6 +43,15 @@ Sound LoadEmbeddedSound(const char *path) {
   return sound;
 }
 
+Music LoadEmbeddedMusic(const char *path) {
+  size_t size = 0;
+  const unsigned char *data = EmbeddedAssetGet(path, &size);
+  if (!data || size == 0)
+    return (Music){0};
+  // 内嵌资源为静态常量数组，生命周期与进程一致，可安全供流式 Music 长期引用
+  return LoadMusicStreamFromMemory(AssetExt(path), data, (int)size);
+}
+
 Font LoadEmbeddedFontEx(const char *path, int fontSize, int *codepoints,
                         int cpCount) {
   size_t size = 0;

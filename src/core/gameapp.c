@@ -134,8 +134,9 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   InitWindow(logicWidth, logicHeight, title);
   // 禁用 ESC 默认关闭窗口：ESC 交给主循环用于弹出暂停界面
   SetExitKey(0);
-  //HideCursor(); // 取消隐藏鼠标。。。我完全想不出来怎么完全禁用鼠标，就这样子吧
-  // 限制最小窗口尺寸，避免被压缩得过小
+  // HideCursor(); //
+  // 取消隐藏鼠标。。。我完全想不出来怎么完全禁用鼠标，就这样子吧
+  //  限制最小窗口尺寸，避免被压缩得过小
   SetWindowMinSize(logicWidth, logicHeight);
 
   // 禁用 DWM 窗口过渡动画：Windows 11 在无边框全屏/小窗切换（窗口样式 +
@@ -189,6 +190,23 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   app.pickLetterSoundValid = IsSoundValid(app.pickLetterSound);
   app.tickSound = LoadEmbeddedSound("assets/sounds/tick.ogg");
   app.tickSoundValid = IsSoundValid(app.tickSound);
+
+  // ── 背景音乐（BGM）：五首曲目从内嵌资源流式加载 ──────────────────────
+  // 路径表索引必须与 MusicTrack 枚举顺序严格对应（见 core/gameapp.h）。
+  // 循环播放由 raylib 加载时的 Music.looping = true 默认提供；加载失败时
+  // musicTrackValid=false，切换/更新时静默跳过（与音效 valid 语义一致）。
+  static const char *kMusicPaths[MUSIC_TRACK_COUNT] = {
+      "assets/music/CatET.mp3",
+      "assets/music/Find The Letter.mp3",
+      "assets/music/IDK.mp3",
+      "assets/music/Test Your Words.mp3",
+      "assets/music/Wonderful Words Memorizing Time.mp3",
+  };
+  app.currentMusicTrack = -1; // 尚未选择曲目（启动阶段保持静音）
+  for (int i = 0; i < MUSIC_TRACK_COUNT; i++) {
+    app.musicTracks[i] = LoadEmbeddedMusic(kMusicPaths[i]);
+    app.musicTrackValid[i] = IsMusicValid(app.musicTracks[i]);
+  }
 
   // 全局 UI 字体：用 LoadFontEx 生成包含词库中文码点的像素字图集，
   // 供界面与中文释义共用；失败降级到默认字体。像素字体用点采样保持锐利。
@@ -368,6 +386,11 @@ void GameAppClose(GameApp *app) {
   UnloadSound(app->levelFinishSound);
   UnloadSound(app->pickLetterSound);
   UnloadSound(app->tickSound);
+  // 卸载背景音乐流（仅卸载加载成功的曲目）
+  for (int i = 0; i < MUSIC_TRACK_COUNT; i++) {
+    if (app->musicTrackValid[i])
+      UnloadMusicStream(app->musicTracks[i]);
+  }
   // 仅卸载真正加载的自定义字体（降级用的默认字体归 raylib 内部管理）
   if (app->uiFontLoaded) {
     UnloadFont(app->uiFont);
@@ -420,9 +443,18 @@ bool GameAppIsSoundEnabled(const GameApp *app) {
 }
 
 void GameAppSetMusicEnabled(GameApp *app, bool enabled) {
-  if (!app)
+  if (!app || app->musicEnabled == enabled)
     return;
   app->musicEnabled = enabled;
+  // 立即联动当前曲目：关闭即停，重新开启则续播（曲目记忆保留在
+  // currentMusicTrack，场景无需重新声明）。曲目无效时无操作。
+  const int t = app->currentMusicTrack;
+  if (t < 0 || t >= MUSIC_TRACK_COUNT || !app->musicTrackValid[t])
+    return;
+  if (enabled)
+    PlayMusicStream(app->musicTracks[t]);
+  else
+    StopMusicStream(app->musicTracks[t]);
 }
 
 bool GameAppIsMusicEnabled(const GameApp *app) {
@@ -438,11 +470,41 @@ void GameAppPlaySound(const GameApp *app, Sound sound, bool soundValid) {
   PlaySound(sound);
 }
 
-// 统一音乐播放入口（预留）：音乐总开关关闭时静默跳过。
-// 当前无音乐资源，接入 BGM 后播放前先经此接口启动流；停止/循环/音量等
-// 后续控制仍由持有 Music 的一方直接调用 raylib API。
-void GameAppPlayMusic(const GameApp *app, Music music) {
+// ── 背景音乐统一接口实现 ────────────────────────────────────────────────────
+
+// 切换背景音乐曲目：与当前曲目相同则忽略；切换时先停上一首，再依据总开关
+// 决定是否立即播放新曲目（关闭时仅记住曲目，重新开启后自动续播）。
+void GameAppSetMusicTrack(GameApp *app, MusicTrack track) {
+  if (!app || track < 0 || track >= MUSIC_TRACK_COUNT)
+    return;
+  if (app->currentMusicTrack == track)
+    return; // 同一曲目：不做任何重启，保证跨关卡连续播放不被打断
+
+  const int prev = app->currentMusicTrack;
+  if (prev >= 0 && prev < MUSIC_TRACK_COUNT && app->musicTrackValid[prev])
+    StopMusicStream(app->musicTracks[prev]);
+
+  app->currentMusicTrack = track;
+  if (app->musicEnabled && app->musicTrackValid[track])
+    PlayMusicStream(app->musicTracks[track]);
+}
+
+// 停止当前背景音乐并清除当前曲目。
+void GameAppStopMusic(GameApp *app) {
+  if (!app)
+    return;
+  const int t = app->currentMusicTrack;
+  if (t >= 0 && t < MUSIC_TRACK_COUNT && app->musicTrackValid[t])
+    StopMusicStream(app->musicTracks[t]);
+  app->currentMusicTrack = -1;
+}
+
+// 每帧驱动：持续为当前曲目补充流缓冲（raylib 流式播放必需）。
+void GameAppUpdateMusic(const GameApp *app) {
   if (!app || !app->musicEnabled)
     return;
-  PlayMusicStream(music);
+  const int t = app->currentMusicTrack;
+  if (t < 0 || t >= MUSIC_TRACK_COUNT || !app->musicTrackValid[t])
+    return;
+  UpdateMusicStream(app->musicTracks[t]);
 }

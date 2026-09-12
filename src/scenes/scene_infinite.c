@@ -32,8 +32,9 @@
 // ── 场景常量（布局坐标；数值平衡见 core/game_config.h）─────────────────────
 #define INFINITE_GROUND_H 50 // 地面高度（顶面 y=480-50，与各场景一致）
 #define INFINITE_OPTION_COUNT 3
-#define INFINITE_OPTION_H 46   // 候选单词框高
-#define INFINITE_OPTION_GAP 12 // 候选框间距（框宽由 HudLayoutWordRow 按词长自适应）
+#define INFINITE_OPTION_H 46 // 候选单词框高
+#define INFINITE_OPTION_GAP                                                    \
+  12 // 候选框间距（框宽由 HudLayoutWordRow 按词长自适应）
 #define INFINITE_BANNER_MAX_LINES 4 // 复习横幅 / 题目提示最大换行数
 
 // 结算菜单选项（顺序与 MenuNav.selected 索引一一对应）
@@ -344,6 +345,8 @@ static void HandleWrong(InfiniteSceneData *d, GameScene *self) {
 
 static void InfiniteSceneEnter(GameScene *self) {
   InfiniteSceneData *d = (InfiniteSceneData *)self->data;
+  // 无尽模式 BGM（Wonderful Words Memorizing Time.mp3）
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_INFINITE);
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 
@@ -555,11 +558,10 @@ static void DrawTopBar(InfiniteSceneData *d) {
 
   // 中列：本局时间 / 答错数 + 答对率（未答题时显示 --）
   const int totalSec = (int)d->elapsed;
-  snprintf(text, sizeof(text), "Time %02d:%02d", totalSec / 60,
-           totalSec % 60);
+  snprintf(text, sizeof(text), "Time %02d:%02d", totalSec / 60, totalSec % 60);
   GameAppDrawText(d->app, text,
-                  (screenW - GameAppMeasureText(d->app, text, fs)) / 2, 12,
-                  fs, LIGHTGRAY);
+                  (screenW - GameAppMeasureText(d->app, text, fs)) / 2, 12, fs,
+                  LIGHTGRAY);
   if (d->totalAsked > 0) {
     snprintf(text, sizeof(text), "Wrong %d    Acc %d%%", d->wrongCount,
              InfiniteAccuracy(d));
@@ -567,8 +569,8 @@ static void DrawTopBar(InfiniteSceneData *d) {
     snprintf(text, sizeof(text), "Wrong %d    Acc --", d->wrongCount);
   }
   GameAppDrawText(d->app, text,
-                  (screenW - GameAppMeasureText(d->app, text, fs)) / 2, 34,
-                  fs, LIGHTGRAY);
+                  (screenW - GameAppMeasureText(d->app, text, fs)) / 2, 34, fs,
+                  LIGHTGRAY);
 
   // 右列：ESC 暂停提示框（黑底上使用浅色描边）
   const int escW = GameAppMeasureText(d->app, "ESC", fs);
@@ -613,10 +615,10 @@ static void DrawOptions(InfiniteSceneData *d) {
   for (int i = 0; i < INFINITE_OPTION_COUNT; i++)
     words[i] = d->options[i].word;
   Rectangle rects[INFINITE_OPTION_COUNT];
-  const int fs = HudLayoutWordRow(
-      d->app, words, INFINITE_OPTION_COUNT, (float)screenW,
-      INFINITE_OPTION_GAP, 14 /*padX*/, 16 /*base*/, 10 /*min*/, 110.0f,
-      (float)INFINITE_OPTION_H, (float)boxY, rects);
+  const int fs = HudLayoutWordRow(d->app, words, INFINITE_OPTION_COUNT,
+                                  (float)screenW, INFINITE_OPTION_GAP,
+                                  14 /*padX*/, 16 /*base*/, 10 /*min*/, 110.0f,
+                                  (float)INFINITE_OPTION_H, (float)boxY, rects);
 
   for (int i = 0; i < INFINITE_OPTION_COUNT; i++) {
     Rectangle rec = rects[i];
@@ -793,8 +795,9 @@ static void DrawGameOver(InfiniteSceneData *d) {
                     210, statSize, GOLD);
   }
   if (d->totalAsked > 0) {
-    snprintf(stat, sizeof(stat), "Wrong : %d     Acc : %d%%     Best Streak : %d",
-             d->wrongCount, InfiniteAccuracy(d), d->bestStreak);
+    snprintf(stat, sizeof(stat),
+             "Wrong : %d     Acc : %d%%     Best Streak : %d", d->wrongCount,
+             InfiniteAccuracy(d), d->bestStreak);
   } else {
     snprintf(stat, sizeof(stat), "Wrong : %d     Acc : --     Best Streak : %d",
              d->wrongCount, d->bestStreak);

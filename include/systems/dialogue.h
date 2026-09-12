@@ -27,4 +27,18 @@
 
 const char *getDialogue();
 
+/* 用于生成剧情的函数。
+ * 给这个破游戏写剧情，我真是疯子
+ * 剧情文字会自动在进入新的关卡时自动显示，逐字输出，无法跳过，与玩家的操作无关
+ */
+
+const char *getStory(int difficulty, int level);
+
+/*
+ * 用于生成启动游戏时的随机文本
+ * 每次调用会返回一个字符串
+ */
+
+const char *getStartText();
+
 #endif // DIALOGUE_H

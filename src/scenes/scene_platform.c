@@ -69,10 +69,9 @@ static void PlatformOnBattle(void *ctx) {
   GameScene *self = bc->scene;
   PlatformSceneData *d = (PlatformSceneData *)self->data;
   Enemy *e = &d->enemies[bc->enemyIndex];
-  GameStackPush(
-      self->owner,
-      TransitionSceneCreate(d->app,
-                            BattleSceneCreate(d->app, &d->cat, e, self,
+  GameStackPush(self->owner,
+                TransitionSceneCreate(
+                    d->app, BattleSceneCreate(d->app, &d->cat, e, self,
                                               d->level, d->difficulty)));
 }
 
@@ -87,8 +86,9 @@ static void PlatformDamagePlayer(PlatformSceneData *d, float amount) {
   player->health -= amount;
   if (player->health < 0.f)
     player->health = 0.f;
-  player->lastHealth = player->health; // 同步基准，避免 UpdatePlayer 二次触发击退/音效
-  PlayerTriggerHit(player);            // 原地触发 HIT 动画（扣血仍有反馈）
+  player->lastHealth =
+      player->health;       // 同步基准，避免 UpdatePlayer 二次触发击退/音效
+  PlayerTriggerHit(player); // 原地触发 HIT 动画（扣血仍有反馈）
   GameAppPlaySound(d->app, d->app->catHitSound, d->app->catHitSoundValid);
 }
 
@@ -97,6 +97,8 @@ static void RespawnIfFallen(PlatformSceneData *d, Player *player);
 
 static void PlatformSceneEnter(GameScene *self) {
   PlatformSceneData *d = (PlatformSceneData *)self->data;
+  // 关卡 BGM：平台/迷宫/拼写共用「Find The Letter.mp3」
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_PLAY);
   // 避免内存未初始化导致的问题
   d->cat = (Player){0};
   InitPlayer(&d->cat);
@@ -474,6 +476,14 @@ static void PlatformSceneExit(GameScene *self) {
       UnloadTexture(d->platforms[i].platformTexture);
 }
 
+// 重新回到栈顶（战斗覆盖层弹出 / 暂停界面关闭）时恢复关卡 BGM：
+// 战斗场景会把 BGM 切到战斗曲，弹出后需切回关卡曲；若当前已是关卡曲
+// 则 GameAppSetMusicTrack 内部直接忽略，不会重启曲目。
+static void PlatformSceneResume(GameScene *self) {
+  PlatformSceneData *d = (PlatformSceneData *)self->data;
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_PLAY);
+}
+
 static void RespawnIfFallen(PlatformSceneData *d, Player *player) {
   const float groundTop = (float)(d->app->logicHeight - 50);
   if (player->position.y <= groundTop + 200.f)
@@ -511,6 +521,7 @@ GameScene *PlatformSceneCreate(const GameApp *app, int difficulty, int level) {
   scene->onUpdate = PlatformSceneUpdate;
   scene->onDraw = PlatformSceneDraw;
   scene->onExit = PlatformSceneExit;
+  scene->onResume = PlatformSceneResume; // 覆盖层弹出后恢复关卡 BGM
 
   return scene;
 }

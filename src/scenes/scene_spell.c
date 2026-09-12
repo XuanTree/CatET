@@ -318,6 +318,8 @@ static Vector2 SpellDropResolver(void *ctx, const Player *p) {
 
 static void SpellSceneEnter(GameScene *self) {
   SpellSceneData *d = (SpellSceneData *)self->data;
+  // 关卡 BGM：平台/迷宫/拼写共用「Find The Letter.mp3」
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_PLAY);
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 

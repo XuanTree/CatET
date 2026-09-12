@@ -6,7 +6,7 @@
 // 返回只走 X / ESC 键（与其它菜单一致），不再单设 Back 按钮。
 typedef enum SettingItem {
   SETTING_ITEM_SOUND = 0, // 音效总开关（Sound Effect）
-  SETTING_ITEM_MUSIC,     // 音乐总开关（Music，当前无音乐资源，接口预留）
+  SETTING_ITEM_MUSIC,     // 音乐总开关（Music，立即停止/恢复当前 BGM 并持久化）
   SETTING_ITEM_COUNT,
 } SettingItem;
 
@@ -45,6 +45,8 @@ static void SettingsApplyItem(GameScene *self, SettingItem item) {
   }
   case SETTING_ITEM_MUSIC: {
     const bool next = !GameAppIsMusicEnabled(d->app);
+    // GameAppSetMusicEnabled 内部即时停止/恢复当前 BGM（曲目记忆保留，
+    // 重新开启后自动续播），因此设置界面无需再操作音乐资源。
     GameAppSetMusicEnabled(app, next);
     SaveDataSaveSettings(GameAppIsSoundEnabled(d->app), next);
     break;
@@ -136,9 +138,8 @@ static void SettingsDraw(GameScene *self) {
   const float gap = 14;
 
   // TextFormat 每次调用覆盖同一静态缓冲区，逐次使用并立即绘制
-  const char *soundLabel =
-      TextFormat("Sound Effect: %s",
-                 GameAppIsSoundEnabled(d->app) ? "ON" : "OFF");
+  const char *soundLabel = TextFormat(
+      "Sound Effect: %s", GameAppIsSoundEnabled(d->app) ? "ON" : "OFF");
   const char *musicLabel =
       TextFormat("Music: %s", GameAppIsMusicEnabled(d->app) ? "ON" : "OFF");
   const char *labels[SETTING_ITEM_COUNT] = {soundLabel, musicLabel};

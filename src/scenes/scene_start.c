@@ -12,7 +12,7 @@ typedef enum StartAction {
 
 // 开始菜单选项定义（顺序与 MenuNav.selected 索引一一对应）
 static const char *const kStartLabels[] = {"Play", "Infinite", "Settings",
-                                            "Quit"};
+                                           "Quit"};
 static const StartAction kStartActions[] = {
     START_ACTION_PLAY, START_ACTION_INFINITE, START_ACTION_SETTINGS,
     START_ACTION_QUIT};
@@ -46,6 +46,8 @@ typedef struct StartData {
 
 static void StartEnter(GameScene *self) {
   StartData *d = (StartData *)self->data;
+  // 主菜单 BGM：进入菜单即切换到主题曲（CatET.mp3）
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_MENU);
   // 进入开始菜单即开启新的一局：重置跨关卡生命值继承（下一关从满血开始）
   ((GameApp *)d->app)->playerHealth = 0.0f;
   // 新的一局：清空错词本/间隔重复记录（保留数组与词库绑定，见
@@ -88,15 +90,17 @@ static void StartUpdate(GameScene *self, float dt) {
     if (d->diffAction >= 0) {
       if (d->pendingMode == START_ACTION_INFINITE) {
         // 无尽模式：自建无尽答题场景（难度决定词库与惩罚，scene_infinite）
-        GameStackReplace(self->owner, TransitionSceneCreate(
-                                          d->app, InfiniteSceneCreate(
-                                                      d->app, d->diffAction)));
+        GameStackReplace(
+            self->owner,
+            TransitionSceneCreate(d->app,
+                                  InfiniteSceneCreate(d->app, d->diffAction)));
       } else {
         // 主线模式：平台跳跃第 1 关，难度随 LevelFlow 传递
-        GameStackReplace(self->owner, TransitionSceneCreate(
-                                          d->app, LevelFlowCreateScene(
-                                                      d->app, LEVEL_TYPE_PLATFORM,
-                                                      1, d->diffAction)));
+        GameStackReplace(
+            self->owner,
+            TransitionSceneCreate(
+                d->app, LevelFlowCreateScene(d->app, LEVEL_TYPE_PLATFORM, 1,
+                                             d->diffAction)));
       }
       return;
     }
@@ -178,11 +182,11 @@ static void DrawDifficultyMenu(StartData *d) {
 
   // 标题置于副标题之下、按钮之上，避免与标题/副标题重叠；
   // 无尽模式与主线模式共用难度菜单，标题随入口模式提示当前目标
-  const char *diffTitle =
-      (d->pendingMode == START_ACTION_INFINITE) ? "Infinite Difficulty"
-                                                : "Select Difficulty";
-  const int dtSize = 20; // “Infinite Difficulty”/“Select Difficulty”标题字号
-                        // （22 略宽，480 宽度下显示不全，降到 20）
+  const char *diffTitle = (d->pendingMode == START_ACTION_INFINITE)
+                              ? "Infinite Difficulty"
+                              : "Select Difficulty";
+  const int dtSize = 20;    // “Infinite Difficulty”/“Select Difficulty”标题字号
+                            // （22 略宽，480 宽度下显示不全，降到 20）
   const int titleSize = 48; // 与 StartDraw 中主标题字号一致
   const int subSize = 20;   // 与 StartDraw 中副标题字号一致
   const int dtY = screenH / 4 + titleSize / 2 + 12 + subSize + 20;

@@ -611,6 +611,9 @@ static void UpdateEnemyTurn(BattleSceneData *d, float dt) {
 
 static void BattleEnter(GameScene *self) {
   BattleSceneData *d = (BattleSceneData *)self->data;
+  // 战斗 BGM（Test Your Words.mp3）；战斗为覆盖层，退出弹回时由下层关卡
+  // 场景的 onResume 恢复关卡 BGM（见 scene_platform 的 PlatformSceneResume）
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_BATTLE);
   Player *player = d->player;
   Enemy *enemy = d->enemy;
   const int screenW = d->app->logicWidth;

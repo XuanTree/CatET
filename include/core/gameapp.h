@@ -24,6 +24,20 @@ typedef struct StudyTracker StudyTracker;
 // 缩放、居中、黑边、全屏切换集中在 GameAppPresent，一处改动全局生效。
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── 背景音乐曲目（assets/music/*.mp3，全部循环播放）─────────────────────────
+// 每首曲目在 GameAppInit 时统一从内嵌资源流式加载一次，由各场景 onEnter 通过
+// GameAppSetMusicTrack 切换；播放/停止统一受 musicEnabled 总开关控制，保证
+// 设置界面的「音乐」开关全局生效并持久化。索引顺序不可随意调整（与
+// GameAppInit 内的路径表一一对应）。
+typedef enum MusicTrack {
+  MUSIC_TRACK_MENU = 0, // 主菜单主题曲（CatET.mp3）
+  MUSIC_TRACK_PLAY,   // 关卡游玩：平台 / 迷宫 / 极速拼写（Find The Letter.mp3）
+  MUSIC_TRACK_BOSS,   // Boss 战（IDK.mp3）
+  MUSIC_TRACK_BATTLE, // 战斗场景（Test Your Words.mp3）
+  MUSIC_TRACK_INFINITE, // 无尽模式（Wonderful Words Memorizing Time.mp3）
+  MUSIC_TRACK_COUNT
+} MusicTrack;
+
 typedef struct GameApp {
   int logicWidth;       // 逻辑分辨率宽（固定）
   int logicHeight;      // 逻辑分辨率高（固定）
@@ -42,11 +56,11 @@ typedef struct GameApp {
   Image icon;            // 窗口图标（保留以便最后卸载）
 
   // ── 音频总开关（设置界面控制，见 scenes/scene_settings）─────────────────
-  // 所有音效/音乐播放统一经 GameAppPlaySound / GameAppPlayMusic 入口，
-  // 总开关关闭时静默跳过；持久化到 save.json（见 systems/save_data）。
+  // 音效统一经 GameAppPlaySound、音乐统一经 GameAppSetMusicTrack 入口，
+  // 总开关关闭时静默跳过/停止；持久化到 save.json（见 systems/save_data）。
   bool soundEnabled; // 音效总开关（false 时所有音效静默，默认 true）
   bool musicEnabled; // 音乐总开关（false 时所有音乐静默，默认 true；
-                     // 当前版本尚无音乐资源，接口预留）
+                     // 设置界面可即时开关并持久化到 save.json）
 
   Sound uiSound;     // UI 音效（选中/确认，开始/暂停/失败菜单触发播放）
   bool uiSoundValid; // 是否成功加载 UI 音效（无效时静默跳过播放，避免空操作）
@@ -71,6 +85,14 @@ typedef struct GameApp {
   bool pickLetterSoundValid;  // 是否成功加载（无效时静默跳过播放）
   Sound tickSound;            // 关卡倒计时剩余警告音效（tick.ogg）
   bool tickSoundValid;        // 是否成功加载（无效时静默跳过播放）
+
+  // ── 背景音乐（BGM）──────────────────────────────────────────────────────
+  // 五首曲目统一在 Init 时从内嵌资源流式加载（全部循环播放，raylib 默认），
+  // 场景只声明「当前应播放哪首」（GameAppSetMusicTrack），播放/停止由总开关
+  // 统一裁决，避免各处零散调用 raylib 音乐 API 绕过设置界面开关。
+  Music musicTracks[MUSIC_TRACK_COUNT];
+  bool musicTrackValid[MUSIC_TRACK_COUNT]; // 各曲目是否加载成功
+  int currentMusicTrack; // 当前曲目索引（MusicTrack）；-1 表示尚未选择/已停止
 
   Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
   bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）
@@ -118,8 +140,8 @@ int GameAppMeasureText(const GameApp *app, const char *text, int fontSize);
 void GameAppSetSoundEnabled(GameApp *app, bool enabled);
 bool GameAppIsSoundEnabled(const GameApp *app);
 
-// 设置/查询音乐总开关（关闭后 GameAppPlayMusic 播放被静默跳过；
-// 当前尚无音乐资源，供后续接入 BGM 使用）。
+// 设置/查询音乐总开关（关闭后立即停止当前 BGM，重新开启时自动恢复播放；
+// 设置界面经此读写并持久化）。
 void GameAppSetMusicEnabled(GameApp *app, bool enabled);
 bool GameAppIsMusicEnabled(const GameApp *app);
 
@@ -127,8 +149,16 @@ bool GameAppIsMusicEnabled(const GameApp *app);
 // 全项目播放音效应统一走此接口，避免绕过总开关。
 void GameAppPlaySound(const GameApp *app, Sound sound, bool soundValid);
 
-// 统一音乐播放入口（预留）：音乐总开关关闭时静默跳过。
-// 接入 BGM 后，加载/播放/循环的调用方在播放前经此接口启动流。
-void GameAppPlayMusic(const GameApp *app, Music music);
+// ── 背景音乐统一接口 ────────────────────────────────────────────────────────
+// 切换背景音乐曲目：与当前曲目相同则忽略；切换时自动停止上一首，并依据音乐
+// 总开关决定是否立即播放新曲目（关闭时仅记住曲目，重新开启后自动续播）。
+// 各场景在 onEnter（覆盖层则在 onResume）调用，实现全局统一 BGM 调度。
+void GameAppSetMusicTrack(GameApp *app, MusicTrack track);
+
+// 停止当前背景音乐并清除当前曲目（一般无需手动调用，供特殊场景静音使用）。
+void GameAppStopMusic(GameApp *app);
+
+// 每帧驱动：更新当前曲目的流缓冲（主循环每帧调用一次，与帧率无关）。
+void GameAppUpdateMusic(const GameApp *app);
 
 #endif // GAMEAPP_H

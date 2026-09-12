@@ -501,6 +501,8 @@ static void BossFightSetupPlatforms(BossFightSceneData *d) {
 
 static void BossFightSceneEnter(GameScene *self) {
   BossFightSceneData *d = (BossFightSceneData *)self->data;
+  // Boss 战 BGM（IDK.mp3）
+  GameAppSetMusicTrack((GameApp *)d->app, MUSIC_TRACK_BOSS);
   const int screenW = d->app->logicWidth;
   const int screenH = d->app->logicHeight;
 

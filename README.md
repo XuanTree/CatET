@@ -166,6 +166,7 @@ CET/
 ├── assets/
 │   ├── sprites/            # player / enemy / boss / bullet / platform / icon sprites
 │   ├── sounds/             # sound effects (.ogg, most from Mixkit)
+│   ├── music/              # background music tracks (.mp3, composed by Deepseek)
 │   ├── words/              # CET4.txt / CET6.txt word banks
 │   ├── fonts/              # pixel_font.ttf (fusion-pixel-font, NOT in this repo — see below)
 │   └── data/               # save.json (best time + audio settings)
@@ -231,7 +232,9 @@ Distributed under the **GNU General Public License v3.0** — see [`LICENSE`](LI
 - **Nai Tang** (my cat) — the inspiration for the game's main character.
 - [@raysan5](https://github.com/raysan5) — [Raylib](https://github.com/raysan5/raylib) and [Raygui](https://github.com/raysan5/raygui) are truly fantastic libraries!
 - [@TakWolf](https://github.com/TakWolf) — the [pixel-font](https://github.com/TakWolf/fusion-pixel-font) used in-game.
-- Deepseek - helped me a lot during the game development.
+- **Deepseek** — helped me a lot during the game development, and **composed all of the
+  game's music tracks** ([`assets/music/`](assets/music/)). These tracks are free to
+  use — see [About the music](#about-the-music).
 - [Mixkit](https://mixkit.co/) — most of the sound effects.
 
 ---
@@ -249,6 +252,7 @@ origins:
 |---|---|---|
 | [`assets/sprites/`](assets/sprites/) | Player (`cat_*`), enemy, boss, bullet, platforms and the app icon | Drawn for this game (the cat character is inspired by **Nai Tang**). Use freely within this project; reuse elsewhere at your own discretion. |
 | [`assets/sounds/`](assets/sounds/) | 9 `.ogg` sound effects | **Not all self-made.** Most come from [Mixkit](https://mixkit.co/) and are used under its free license (see below); the rest were created or edited by me. |
+| [`assets/music/`](assets/music/) | 5 `.mp3` background music tracks (`CatET`, `Find The Letter`, `IDK`, `Test Your Words`, `Wonderful Words Memorizing Time`) | **Composed by Deepseek.** Free to use without restriction — see [About the music](#about-the-music). |
 | [`assets/words/`](assets/words/) | `CET4.txt` / `CET6.txt` word banks | Bundled with the game; format is `word<TAB>part-of-speech. meaning`. |
 | [`assets/fonts/`](assets/fonts/) | `pixel_font.ttf` (UI font) | From [fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font) by [@TakWolf](https://github.com/TakWolf). **Not distributed in this repo** — `assets/fonts/` is git-ignored (see [`.gitignore`](.gitignore:26)). Download it and place it there before building. |
 | [`assets/data/`](assets/data/) | `save.json` (runtime) | Runtime-only persistence, not a shipped asset. |
@@ -278,3 +282,16 @@ licensed separately and kept out of this repository (see
 3. Build as usual — the font is then embedded along with everything else.
 
 Without it, the game still runs but renders text with Raylib's built-in font.
+
+---
+
+### About the music
+
+Every background music track under [`assets/music/`](assets/music/) was **composed by
+Deepseek** for CatET. **The music is completely free to use** — you may copy, modify,
+remix, redistribute, and use it in any project, personal or commercial, in whole or
+in part, **without restriction and without needing to ask for permission**.
+Attribution is appreciated but **not required**.
+
+The music is licensed separately from the game code (which remains GPL-3.0) and is
+provided "as is", without warranty of any kind.

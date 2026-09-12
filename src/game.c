@@ -18,9 +18,10 @@ void Run() {
   GameAppSetSoundEnabled(&app, SaveDataLoadSoundEnabled());
   GameAppSetMusicEnabled(&app, SaveDataLoadMusicEnabled());
 
-  // 创建场景栈并压入初始场景：开始菜单（Play 后经栈替换进入测试关卡）
+  // 创建场景栈并压入初始场景：启动名言过场（scene_intro，黑底白字显示一句
+  // 名言，3s 后 / 按 X 跳过 → 经通用过渡进入开始菜单）
   GameStack *stack = GameStackCreate();
-  GameStackPush(stack, StartSceneCreate(&app));
+  GameStackPush(stack, IntroSceneCreate(&app));
 
   // 主循环：事件 → 更新 → 绘制
   while (!WindowShouldClose() && !GameStackWantsQuit(stack)) {
@@ -53,6 +54,9 @@ void Run() {
     app.runTime += dt;          // 全局运行计时：暂停时不计，供关卡 HUD 显示
     SpeedrunTick(&app, dt);     // 隐式全局计时器：从第一关开始累计到失败/通关
     GameStackUpdate(stack, dt); // 帧首 flush 切换请求 + 驱动栈顶场景
+
+    // 背景音乐：每帧为当前曲目补充流缓冲（暂停时也继续，音乐不随游戏暂停中断）
+    GameAppUpdateMusic(&app);
 
     // 统一绘制：先绘制到固定分辨率渲染目标，再等比缩放到窗口
     GameAppBegin(&app);
