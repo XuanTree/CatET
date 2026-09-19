@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=CatET
+Comment=Cat's English Trial - a roguelike word-spelling platformer
+Exec=/opt/CatET/CatET
+Icon=/opt/CatET/CatET
+Terminal=false
+Categories=Game;Education;
+Keywords=word;english;cet;game;platformer;
