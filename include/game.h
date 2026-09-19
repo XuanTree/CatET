@@ -40,12 +40,14 @@
 #include "tools/resource.h"
 #include "tools/strings.h"
 #include "tools/timer.h"
+#include "tools/ui_theme.h"
 
 // ─── systems：跨场景系统层（仅依赖 core）─────────────────────────────────
 #include "systems/dialogue.h"
 #include "systems/level_flow.h"
 #include "systems/save_data.h"
 #include "systems/speedrun.h"
+#include "systems/story.h"
 #include "systems/study_tracker.h"
 #include "systems/words_loader.h"
 

@@ -129,7 +129,6 @@ const char *getStartText() {
   }
 }
 
-// TODO Write A Story For The Game...To make it more interestring...
 // 简单难度和普通难度共用一个故事模板
 const char *getStory(int difficulty, int level) {
   switch (difficulty) {
@@ -138,18 +137,182 @@ const char *getStory(int difficulty, int level) {
     switch (level) {
     case 1:
       return "Once upon a time, there was a little cat named cat...";
+    case 2:
+      return "cat was very cute, but he was not very smart...";
+    case 3:
+      return "The only language cat could speak was MEOW !!!";
+    case 4:
+      return "He thought: I only heard MEOW in my life, so everybody speaks "
+             "MEOW...";
+    case 5:
+      return "But he was wrong";
+    case 6:
+      return "One Day, he heard something, something that was not MEOW...";
+    case 7:
+      return "How Amazing!";
+    case 8:
+      return "......";
+    case 9:
+      return "Cat finally realized that there are many languages in the world";
+    case 10:
+      return "Meow is not the only language!";
+    case 11:
+      return "Cat was Very Happy!";
+    case 12:
+      return "\"I found another language in the world!\"";
+    case 13:
+      return "But, what language is it?";
+    case 14:
+      return "Cat was very curious...";
+    case 15:
+      return "He decided to find out!";
+    case 16:
+      return "Cat went out into the world to find out...";
+    case 17:
+      return "And finally he learned that language is called English";
+    case 18:
+      return "Cat immediately decided!";
+    case 19:
+      return "\"I want to learn ENGLISH!!!\"";
+    case 21:
+      return "Cat went to school to learn English...";
+    case 22:
+      return "But, he was not very good at learning...";
+    case 23:
+      return "Cat was very sad...";
+    case 24:
+      return "But, he was not giving up...";
+    case 25:
+      return "\"The only thing I need to do is to try much harder!\"";
+    case 26:
+      return "Cat tried harder and harder...";
+    case 27:
+      return "In fact, Cat totally didn't know how to learn English.";
+    case 28:
+      return "The only thing he really did was memorize words and...";
+    case 29:
+      return "Imitate someone's speech!";
+    case 30:
+      return "Cat practiced day and night...";
+    case 31:
+      return "Cat's English gradually improved a lot without notice...";
+    case 32:
+      return "With Cat's age growing, Cat went to high school.";
+    case 33:
+      return "The way school taught English was quite different";
+    case 34:
+      return "Different from how Cat learned English himself!";
+    case 35:
+      return "It's boring.";
+    case 36:
+      return "It's high scores first";
+    case 37:
+      return "It's only focusing on some sort of problem solving...";
+    case 38:
+      return "That's Not English!!!";
+    case 39:
+      return "It's not ANY language";
+    case 41:
+      return "Learning a language is NOT only solving stupid questions on "
+             "paper";
+    case 42:
+      return "It's Reading interesting stories";
+    case 43:
+      return "It's Writing humorous articles";
+    case 44:
+      return "It's Hearing voices that come from other countries";
+    case 45:
+      return "It's Speaking our own feelings to others";
+    case 46:
+      return "It's Learning other cultures in the world!";
+    case 47:
+      return "...";
+    case 48:
+      return "Why can so many people still not learn English well after "
+             "graduation?";
+    case 49:
+      return "Cat thought a lot a lot...";
+    case 50:
+      return "It's not because English is that hard";
+    case 51:
+      return "Hey, I promise that English is much easier than Advanced "
+             "Mathematics";
+    case 52:
+      return "So the reality is,";
+    case 53:
+      return "The way school taught us English was WRONG";
+    case 54:
+      return "Many treat learning English as torture;";
+    case 55:
+      return "They didn't see the true beauty behind languages";
+    case 56:
+      return "If you can learn your native language well...";
+    case 57:
+      return "So can you learn other languages.";
+    case 58:
+      return "Cat started to think...";
+    case 59:
+      return "\"How can i tell others that English is fun?\"";
+    case 61:
+      return "...";
+    case 62:
+      return "And finally, he came up with an idea";
+    case 63:
+      return "Why don't we make a game?";
+    case 64:
+      return "Cat endured boring studies in school";
+    case 65:
+      return "When Cat finally went to college";
+    case 66:
+      return "Cat learned that there was a hard test called CET";
+    case 67:
+      return "So what does CET mean?";
+    case 68:
+      return "And why are so many beaten by it?";
+    case 69:
+      return "To save others, Cat decided...";
+    case 70:
+      return "to take a journey to learn what CET exactly is!";
+    case 71:
+      return "\"Hmmm, how can we beat CET???\"";
+    case 72:
+      return "Words are the first";
+    case 73:
+      return "In fact, the majority of the time we spend on learning a "
+             "language";
+    case 74:
+      return "is memorizing words!";
+    case 75:
+      return "so, why not focus on the words first?";
+    case 76:
+      return "Typically, there are no shortcuts to memorizing words.";
+    case 77:
+      return "so just keep testing yourself!";
+    case 78:
+      return "using these words that are collected for you...";
+    case 79:
+      return "Go! With Cat's Power!!!";
+    case 81:
+      return "20 levels left! Can you hold on to the last level?";
     default:
-      return "There must be someting wrong...";
+      // Boss 关（第 20/40/60/80 关）与最终关（第 100 关）没有剧情：
+      // 返回空串，剧情系统（systems/story）据此不显示文本框。
+      return "";
     }
   case 2: // 困难难度
     switch (level) {
     case 1:
       return "huh? Hard Mode...";
+    case 5:
+      return "You must have passed CET-4!";
+    case 10:
+      return "Go ahead for CET-6!";
     default:
-      return "There must be something, hahaha, wrong!!!";
+      // 困难难度仅在少量关卡提供剧情，其余关卡无剧情（空串 = 不显示）
+      return "";
     }
   default:
-    return "what?";
+    return "";
   }
-  return "The End";
+  return "";
 }

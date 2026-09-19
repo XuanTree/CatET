@@ -68,6 +68,42 @@ void HudDrawTime(const GameApp *app, float timeSeconds) {
                   screenH - (int)margin - fontSize, fontSize, DARKGRAY);
 }
 
+// 右上角指南针：箭头指向目标方向 + 显示剩余距离（10px 记为 1 格，便于阅读）。
+void HudDrawCompass(const GameApp *app, Vector2 from, Vector2 to) {
+  const int screenW = app->logicWidth;
+  const float cx = (float)screenW - 34.0f;
+  const float cy = 92.0f;
+  const float r = 15.0f;
+
+  Vector2 dir = {to.x - from.x, to.y - from.y};
+  const float len = sqrtf(dir.x * dir.x + dir.y * dir.y);
+  if (len > 1.0f) {
+    dir.x /= len;
+    dir.y /= len;
+  } else {
+    dir = (Vector2){0.f, -1.f};
+  }
+
+  DrawCircleLines((int)cx, (int)cy, r, Fade(DARKGRAY, 0.85f));
+  const Vector2 tip = {cx + dir.x * r, cy + dir.y * r};
+  const Vector2 perp = {-dir.y, dir.x};
+  DrawLineEx((Vector2){cx, cy}, tip, 3.0f, MAROON);
+  DrawLineEx(tip,
+             (Vector2){tip.x - dir.x * 7.0f + perp.x * 5.0f,
+                       tip.y - dir.y * 7.0f + perp.y * 5.0f},
+             3.0f, MAROON);
+  DrawLineEx(tip,
+             (Vector2){tip.x - dir.x * 7.0f - perp.x * 5.0f,
+                       tip.y - dir.y * 7.0f - perp.y * 5.0f},
+             3.0f, MAROON);
+
+  const char *distText = TextFormat("%dm", (int)(len / 10.0f));
+  GameAppDrawText(
+      app, distText,
+      (int)(cx - (float)GameAppMeasureText(app, distText, 14) * 0.5f),
+      (int)(cy + r + 2.0f), 14, DARKGRAY);
+}
+
 void HudDrawEscHint(const GameApp *app) {
   const float margin = 12.0f;
   const int fontSize = 16;

@@ -20,7 +20,7 @@
 //   （docs/game_instructions.md 游戏数据持久化）。
 //   文件格式：
 //     {"bestTime": 123.45, "infiniteBest": 20, "soundEnabled": true,
-//      "musicEnabled": true}
+//      "musicEnabled": true, "isBeatGameOnce": false}
 //   全部字段须在下方 SaveData 结构登记，读写统一走 LoadAll/SaveAll，
 //   避免多个写入口互相覆盖。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,5 +53,15 @@ bool SaveDataLoadMusicEnabled(void);
 
 // 写入音效/音乐总开关到 save.json（保留 bestTime 字段不被覆盖）。
 void SaveDataSaveSettings(bool soundEnabled, bool musicEnabled);
+
+// ── 剧情系统持久化（是否已完整通关一次，见 systems/story）───────────────
+// 玩家成功完整通关一次游戏（第 MAX_LEVELS 关）后置 true，其余游戏不再显示
+// 关卡剧情；文件缺失/字段缺失返回 false（未通关，正常显示剧情）。
+
+// 读取「是否已完整通关一次」；文件缺失、字段缺失或格式损坏返回 false。
+bool SaveDataLoadBeatGameOnce(void);
+
+// 写入「是否已完整通关一次」到 save.json（保留其余字段不被覆盖）。
+void SaveDataSaveBeatGameOnce(bool value);
 
 #endif // SYSTEMS_SAVE_DATA_H

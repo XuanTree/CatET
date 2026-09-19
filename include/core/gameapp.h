@@ -53,7 +53,13 @@ typedef struct GameApp {
   float speedrunElapsed; // 当前局速通已计时间（秒）
   bool speedrunActive;   // 当前局是否在速通计时中
   float bestTime;        // 最佳通关时间（秒），< 0 表示尚无记录
-  Image icon;            // 窗口图标（保留以便最后卸载）
+
+  // ── 剧情系统（见 systems/story）─────────────────────────────────────────
+  // 是否已「完整通关一次游戏」（成功通关第 MAX_LEVELS 关时置 true，并
+  // 持久化到 save.json）。为 true 时后续游戏不再显示关卡剧情文本。
+  bool isBeatGameOnce;
+
+  Image icon; // 窗口图标（保留以便最后卸载）
 
   // ── 音频总开关（设置界面控制，见 scenes/scene_settings）─────────────────
   // 音效统一经 GameAppPlaySound、音乐统一经 GameAppSetMusicTrack 入口，
@@ -93,6 +99,8 @@ typedef struct GameApp {
   Music musicTracks[MUSIC_TRACK_COUNT];
   bool musicTrackValid[MUSIC_TRACK_COUNT]; // 各曲目是否加载成功
   int currentMusicTrack; // 当前曲目索引（MusicTrack）；-1 表示尚未选择/已停止
+  bool musicPaused;      // 背景音乐是否因游戏暂停而暂停（仅冻结播放位置，
+                         // 恢复后从原位置继续；见 GameAppSetMusicPaused）
 
   Font uiFont;       // 全局 UI 字体（像素字体，用于界面与中文释义）
   bool uiFontLoaded; // 是否成功加载自定义字体（决定 Close 时是否 UnloadFont）
@@ -157,6 +165,11 @@ void GameAppSetMusicTrack(GameApp *app, MusicTrack track);
 
 // 停止当前背景音乐并清除当前曲目（一般无需手动调用，供特殊场景静音使用）。
 void GameAppStopMusic(GameApp *app);
+
+// 暂停/恢复当前背景音乐：暂停仅冻结播放位置，恢复后从原位置继续（不会
+// 重新开始播放）。主循环随游戏暂停状态每帧同步（见 Run）；再次切换曲目时
+// 若处于暂停态，只记忆曲目而不播放，待恢复后自动续播。
+void GameAppSetMusicPaused(GameApp *app, bool paused);
 
 // 每帧驱动：更新当前曲目的流缓冲（主循环每帧调用一次，与帧率无关）。
 void GameAppUpdateMusic(const GameApp *app);

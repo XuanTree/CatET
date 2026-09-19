@@ -87,6 +87,10 @@ typedef struct BossFightSceneData {
   int smallPlatformCount;
   BossFightFallingLetter falling[BOSSFIGHT_MAX_FALL_LETTERS];
   int fallingCount;
+
+  // 剧情覆盖层（进入关卡时在出生点显示，逐字输出后保留原地，见 systems/story）
+  StoryOverlay story;
+  Vector2 storyAnchor; // 剧情文本框锚点（出生点，世界坐标）
 } BossFightSceneData;
 
 // ── 前向声明 ──────────────────────────────────────────────────────────────
@@ -529,6 +533,14 @@ static void BossFightSceneEnter(GameScene *self) {
   d->cat->velocity = (Vector2){0, 0};
   d->cat->isOnTheGround = true;
 
+  // 剧情：进入关卡时在出生点显示（打字机逐字输出，输出后保留原地；
+  // 已完整通关一次后不再显示，见 systems/story）
+  StoryOverlayStart(&d->story, d->app->isBeatGameOnce
+                                   ? NULL
+                                   : getStory(d->difficulty, d->level));
+  d->storyAnchor = (Vector2){d->cat->position.x + d->cat->size.x * 0.5f,
+                             d->cat->position.y - 8.0f};
+
   // 锁定镜头：禁用相机，固定视野（世界坐标 == 逻辑屏幕坐标）
   InitSceneCamera(&d->camera, screenW, screenH, false, CAMERA_FOLLOW_NONE);
 
@@ -597,6 +609,9 @@ static void BossFightSceneEnter(GameScene *self) {
 
 static void BossFightSceneUpdate(GameScene *self, float dt) {
   BossFightSceneData *d = (BossFightSceneData *)self->data;
+
+  // 剧情打字机：逐字输出（暂停时 dt=0 自动冻结）
+  StoryOverlayUpdate(&d->story, dt);
 
   // 玩家 HP 归零 → 失败（只请求一次）
   if (d->cat->health <= 0.0f) {
@@ -753,6 +768,12 @@ static void BossFightSceneDraw(GameScene *self) {
   // 弹幕
   for (int i = 0; i < d->bulletCount; i++)
     DrawBullet(&d->bullets[i]);
+
+  // 剧情文本框：锚定在世界坐标的出生点，不随玩家移动
+  StoryOverlayDrawAnchored(d->app, &d->story, d->storyAnchor.x,
+                           d->storyAnchor.y, STORY_BOX_MAX_WIDTH,
+                           STORY_BOX_FONT_SIZE, 0.0f,
+                           (float)d->app->logicWidth);
 
   EndSceneCamera(&d->camera);
 

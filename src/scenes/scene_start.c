@@ -31,6 +31,18 @@ typedef enum StartScreen {
   START_SCREEN_DIFFICULTY, // 难度选择二级菜单
 } StartScreen;
 
+// ── 标题文案与「标题小猫」彩蛋参数 ────────────────────────────────────
+// 主菜单与难度菜单共用同一标题（同位置、同字号），小猫彩蛋据此定位。
+static const char *const kTitleText = "CatET";
+#define START_TITLE_SIZE 48 // 标题字号（像素字体基准字号的整数倍，放大不糊）
+// 小猫贴图 icon.png 为 16×16 像素画：按 GAME_SCALE 整数放大到 48，与标题
+// 字高相当；底部上移 START_TITLE_SINK
+// 像素与字形顶部相叠，视觉上「坐」在字母上。
+#define START_TITLE_SINK 6.0f
+// 轻微起伏（幅度 px、频率 Hz）：静态标题上多一点生气，不影响任何交互
+#define START_TITLE_BOB_PX 2.0f
+#define START_TITLE_BOB_HZ 2.0f
+
 // 场景私有数据：栈持有并负责释放
 typedef struct StartData {
   const GameApp *app; // 只读引用，不拥有
@@ -42,6 +54,11 @@ typedef struct StartData {
   // 难度菜单的服务模式：由主菜单哪个入口进入（PLAY=主线 100 关，
   // INFINITE=无尽模式），难度一经选择即按该模式创建对应首场景。
   StartAction pendingMode;
+  // ── 标题小猫彩蛋（见 DrawTitleCat）──────────────────────────────────
+  Texture2D catTexture; // icon.png 小猫贴图（onEnter 加载，onExit 释放）
+  bool catValid;        // 贴图是否加载成功（失败时绘制静默跳过）
+  int catLetter;        // 小猫所坐字母索引（标题字符下标，onEnter 随机）
+  float catTime;        // 彩蛋动画计时（秒），驱动起伏
 } StartData;
 
 static void StartEnter(GameScene *self) {
@@ -60,11 +77,22 @@ static void StartEnter(GameScene *self) {
   d->diffAction = -1;
   MenuNavInit(&d->nav, START_ITEM_COUNT);
   MenuNavInit(&d->diffNav, DIFF_ITEM_COUNT);
+  // 标题小猫彩蛋：加载 icon.png（16×16 像素画，点采样保持锐利）并随机挑一个
+  // 标题字母落座——每次启动游戏小猫所在字母都不同；加载失败时 catValid=false，
+  // 绘制阶段静默跳过（与全项目资源失败语义一致）。
+  d->catTexture = LoadEmbeddedTexture("assets/sprites/icon.png");
+  d->catValid = (d->catTexture.id != 0);
+  if (d->catValid)
+    SetTextureFilter(d->catTexture, TEXTURE_FILTER_POINT);
+  const int titleLen = (int)strlen(kTitleText);
+  d->catLetter = (titleLen > 0) ? genRandomNum(titleLen) : 0;
+  d->catTime = 0.0f;
 }
 
 static void StartUpdate(GameScene *self, float dt) {
-  (void)dt;
   StartData *d = (StartData *)self->data;
+  // 标题小猫彩蛋计时：驱动小猫轻微上下起伏（纯装饰）
+  d->catTime += dt;
 
   // ── 难度选择二级菜单 ─────────────────────────────────────────────
   if (d->screen == START_SCREEN_DIFFICULTY) {
@@ -85,7 +113,7 @@ static void StartUpdate(GameScene *self, float dt) {
       return;
     }
 
-    // 消费难度动作（键盘导航或鼠标点击写入），统一在此执行：
+    // 消费难度动作（键盘确认写入），统一在此执行：
     // 按入口模式（主线/无尽）与所选难度创建对应首场景（经转场）
     if (d->diffAction >= 0) {
       if (d->pendingMode == START_ACTION_INFINITE) {
@@ -118,7 +146,7 @@ static void StartUpdate(GameScene *self, float dt) {
     d->action = kStartActions[d->nav.selected];
   }
 
-  // 消费动作（raygui 交互在 Draw 阶段写入，此处统一执行切换/退出）
+  // 消费动作（全部来自键盘确认，此处统一执行切换/退出）
   switch (d->action) {
   case START_ACTION_PLAY:
   case START_ACTION_INFINITE:
@@ -143,37 +171,42 @@ static void StartUpdate(GameScene *self, float dt) {
   d->action = START_ACTION_NONE;
 }
 
+// 主菜单各条目前置图标（Play / Infinite / Settings / Quit）
+static const int kStartIcons[START_ITEM_COUNT] = {ICON_PLAYER_PLAY, ICON_REPEAT,
+                                                  ICON_GEAR, ICON_EXIT};
+
 // 主菜单按钮绘制（Play / Infinite / Settings / Quit）
 static void DrawMainMenu(StartData *d) {
-  const float btnW = 180;
-  const float btnH = 40;
-  // 四项按钮组：主菜单标题/副标题/最佳时间占据上半屏，按钮组起始于
-  // 中部偏下（约 y=244，四项总高 190 → 底边 424，与底部提示不重叠）
-  const float btnX = (d->app->logicWidth - btnW) / 2;
-  const float btnY = d->app->logicHeight / 2.f + 4;
-  const float gap = 10;
+  const float btnW = 200;
+  const float btnH = 42;
+  const float gap = 12;
+
+  // 卡片面板：包住四项按钮，位于最佳时间之下、底部提示之上
+  const float panelW = btnW + 40;
+  const float panelH =
+      START_ITEM_COUNT * btnH + (START_ITEM_COUNT - 1) * gap + 28;
+  const float panelX = (d->app->logicWidth - panelW) / 2;
+  const float panelY = d->app->logicHeight / 2.f - 22;
+  UiThemePanel((Rectangle){panelX, panelY, panelW, panelH});
+
+  const float btnX = panelX + (panelW - btnW) / 2;
+  const float btnY = panelY + 14;
 
   for (int i = 0; i < START_ITEM_COUNT; i++) {
     Rectangle rec = {
         .x = btnX, .y = btnY + i * (btnH + gap), .width = btnW, .height = btnH};
 
-    // 鼠标悬停时同步选中高亮，键盘与鼠标保持一致的选中指示
-    if (CheckCollisionPointRec(GetMousePosition(), rec)) {
-      d->nav.selected = i;
-    }
-    // 键盘选中的项以 FOCUSED 状态绘制（高亮）
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_FOCUSED);
-    }
-    bool clicked = GuiButton(rec, kStartLabels[i]);
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_NORMAL);
-    }
-    if (clicked) {
-      d->action = kStartActions[i];
-    }
+    // 主题按钮：带图标 + 键盘选中高亮（见 tools/ui_theme）。
+    // 鼠标已在 UiThemeApply 中经 GuiLock 全局禁用，此处只负责绘制，
+    // 返回值恒为 false：选中（W/S/↑↓）与确认（Z）全部由 MenuNav 驱动。
+    (void)UiThemeButton(rec, kStartIcons[i], kStartLabels[i],
+                        i == d->nav.selected);
   }
 }
+
+// 难度选择各条目前置图标（Easy / Normal / Hard）
+static const int kDiffIcons[DIFF_ITEM_COUNT] = {ICON_HEART, ICON_STAR,
+                                                ICON_DEMON};
 
 // 难度选择菜单按钮绘制（Easy / Normal / Hard；X 键返回主菜单）
 static void DrawDifficultyMenu(StartData *d) {
@@ -185,10 +218,10 @@ static void DrawDifficultyMenu(StartData *d) {
   const char *diffTitle = (d->pendingMode == START_ACTION_INFINITE)
                               ? "Infinite Difficulty"
                               : "Select Difficulty";
-  const int dtSize = 20;    // “Infinite Difficulty”/“Select Difficulty”标题字号
-                            // （22 略宽，480 宽度下显示不全，降到 20）
-  const int titleSize = 48; // 与 StartDraw 中主标题字号一致
-  const int subSize = 20;   // 与 StartDraw 中副标题字号一致
+  const int dtSize = 20; // “Infinite Difficulty”/“Select Difficulty”标题字号
+                         // （22 略宽，480 宽度下显示不全，降到 20）
+  const int titleSize = START_TITLE_SIZE; // 与 StartDraw 中主标题字号一致
+  const int subSize = 20;                 // 与 StartDraw 中副标题字号一致
   const int dtY = screenH / 4 + titleSize / 2 + 12 + subSize + 20;
   GameAppDrawText(d->app, diffTitle,
                   (screenW - GameAppMeasureText(d->app, diffTitle, dtSize)) / 2,
@@ -196,29 +229,58 @@ static void DrawDifficultyMenu(StartData *d) {
 
   const float btnW = 200;
   const float btnH = 44;
-  const float btnX = (screenW - btnW) / 2;
-  const float btnY = screenH / 2.f + 20;
   const float gap = 14;
+
+  // 卡片面板：包住三项难度按钮，位于标题之下、底部提示之上
+  const float panelW = btnW + 40;
+  const float panelH =
+      DIFF_ITEM_COUNT * btnH + (DIFF_ITEM_COUNT - 1) * gap + 28;
+  const float panelX = (screenW - panelW) / 2;
+  const float panelY = screenH / 2.f + 6;
+  UiThemePanel((Rectangle){panelX, panelY, panelW, panelH});
+
+  const float btnX = panelX + (panelW - btnW) / 2;
+  const float btnY = panelY + 14;
 
   for (int i = 0; i < DIFF_ITEM_COUNT; i++) {
     Rectangle rec = {
         .x = btnX, .y = btnY + i * (btnH + gap), .width = btnW, .height = btnH};
 
-    // 鼠标悬停时同步选中高亮，键盘与鼠标保持一致的选中指示
-    if (CheckCollisionPointRec(GetMousePosition(), rec)) {
-      d->diffNav.selected = i;
-    }
-    if (i == d->diffNav.selected) {
-      GuiSetState(STATE_FOCUSED);
-    }
-    bool clicked = GuiButton(rec, kDiffLabels[i]);
-    if (i == d->diffNav.selected) {
-      GuiSetState(STATE_NORMAL);
-    }
-    if (clicked) {
-      d->diffAction = i;
-    }
+    // 主题按钮：带图标 + 键盘选中高亮（见 tools/ui_theme）；
+    // 同上：鼠标已全局禁用，只绘制不接收点击，选择与确认由 MenuNav 驱动。
+    (void)UiThemeButton(rec, kDiffIcons[i], kDiffLabels[i],
+                        i == d->diffNav.selected);
   }
+}
+
+// 标题小猫彩蛋：把 icon.png 里的小猫放在标题某个字母上方（字母由 StartEnter
+// 随机选定，每次启动游戏都不同）。逐字符测量前缀宽度定位字母（不假设等宽），
+// 贴图按 GAME_SCALE 整数放大以保持像素锐利，并伴随轻微上下起伏。
+static void DrawTitleCat(const StartData *d, int titleX, int titleY) {
+  if (!d->catValid || d->catLetter < 0)
+    return;
+  const int titleLen = (int)strlen(kTitleText);
+  if (d->catLetter >= titleLen)
+    return;
+
+  // 小猫所在字母的水平区间 = 前缀宽度 + 该字母自身宽度
+  char prefix[16] = {0};
+  for (int i = 0; i < d->catLetter; i++)
+    prefix[i] = kTitleText[i];
+  prefix[d->catLetter] = '\0';
+  const char letter[2] = {kTitleText[d->catLetter], '\0'};
+  const int prefixW = GameAppMeasureText(d->app, prefix, START_TITLE_SIZE);
+  const int letterW = GameAppMeasureText(d->app, letter, START_TITLE_SIZE);
+
+  const float scale = GAME_SCALE;
+  const float catW = (float)d->catTexture.width * scale;
+  const float catH = (float)d->catTexture.height * scale;
+  const float centerX = (float)titleX + (float)prefixW + (float)letterW / 2.0f;
+  const float bob =
+      sinf(d->catTime * 2.0f * PI * START_TITLE_BOB_HZ) * START_TITLE_BOB_PX;
+  const Vector2 pos = {centerX - catW / 2.0f,
+                       (float)titleY - catH + START_TITLE_SINK + bob};
+  DrawTextureEx(d->catTexture, pos, 0.0f, scale, WHITE);
 }
 
 static void StartDraw(GameScene *self) {
@@ -227,11 +289,13 @@ static void StartDraw(GameScene *self) {
   const int screenH = d->app->logicHeight;
 
   // 标题（使用全局像素字体，与整体 UI 风格一致）
-  const char *title = "CatET";
-  const int titleSize = 48;
-  GameAppDrawText(d->app, title,
-                  (screenW - GameAppMeasureText(d->app, title, titleSize)) / 2,
-                  screenH / 4 - titleSize / 2, titleSize, DARKGRAY);
+  const int titleSize = START_TITLE_SIZE;
+  const int titleX =
+      (screenW - GameAppMeasureText(d->app, kTitleText, titleSize)) / 2;
+  const int titleY = screenH / 4 - titleSize / 2;
+  GameAppDrawText(d->app, kTitleText, titleX, titleY, titleSize, DARKGRAY);
+  // 标题小猫彩蛋：画在标题之后，让小猫叠压住字母顶端（随机字母每次启动不同）
+  DrawTitleCat(d, titleX, titleY);
 
   const char *subtitle = "CET Words Challenge";
   const int subSize = 20;
@@ -272,8 +336,10 @@ static void StartDraw(GameScene *self) {
 }
 
 static void StartExit(GameScene *self) {
-  (void)self;
-  // 菜单未加载资源，无需释放
+  StartData *d = (StartData *)self->data;
+  // 释放标题小猫彩蛋贴图（与 StartEnter 的加载一一配对）
+  if (d->catValid)
+    UnloadTexture(d->catTexture);
 }
 
 GameScene *StartSceneCreate(GameApp *app) {

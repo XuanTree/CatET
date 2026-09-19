@@ -48,6 +48,8 @@ typedef struct Player {
   bool isMovable;        // 规定玩家是否可以移动，在战斗场景中，玩家不允许移动
   float hitTimer;        // 受伤动画剩余时长（秒，>0 表示处于受伤状态）
   float lastHealth;      // 上一帧生命值（用于检测生命值下降以触发受伤动画）
+  float coyoteTimer;     // 土狼时间剩余（秒）：离地后短暂窗口内仍可起跳
+  float jumpBufferTimer; // 跳跃输入缓冲剩余（秒）：落地前按下的跳跃被记住
   float invincibleTimer; // 无敌时间剩余（秒，>0 期间不受伤害且绘制时闪烁表现，
                          // 用于战斗弹幕命中后给予短暂免伤，避免连续扣血）
 } Player;

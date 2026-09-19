@@ -12,6 +12,9 @@
 #define AFK_TIMEOUT 20.0f         // 挂机 20 秒后自动进入睡眠动画
 #define HIT_DURATION 0.8f         // 受伤动画总时长（秒，强制播放 0.8s）
 #define HIT_KNOCKBACK_UP (-260.f) // 受伤时强制轻微上跳（增强视觉）
+// 平台跳跃手感：土狼时间（离地后仍可起跳的宽限）+ 跳跃输入缓冲（落地前预输入）
+#define COYOTE_TIME 0.10f
+#define JUMP_BUFFER_TIME 0.12f
 
 void InitPlayer(Player *player) {
   player->health = 100.f;
@@ -50,6 +53,8 @@ void InitPlayer(Player *player) {
                 HIT_DURATION / 4.f, false);
   player->hitTimer = 0.f;
   player->lastHealth = player->health;
+  player->coyoteTimer = 0.f;
+  player->jumpBufferTimer = 0.f;
 }
 
 void UpdatePlayer(Player *player, float dt) {
@@ -70,11 +75,28 @@ void UpdatePlayer(Player *player, float dt) {
   }
   player->lastHealth = player->health;
 
-  // 起跳：在地面上且跳跃键按下或按住时立即起跳。
-  // 用「按住」判定，保证一直按住空格时落地瞬间能无缝衔接下一次跳跃。
-  if (player->isOnTheGround && (jumpPressed || jumpHeld)) {
+  // 土狼时间：仍在地面时刷新宽限；离地后逐帧递减（走出平台边缘的瞬间
+  // 仍能起跳，避免「明明按了却跳不起来」）。
+  if (player->isOnTheGround)
+    player->coyoteTimer = COYOTE_TIME;
+  else if (player->coyoteTimer > 0.f)
+    player->coyoteTimer -= dt;
+
+  // 跳跃输入缓冲：按下跳跃时写入，落地前按下的操作会被记住（0.12s 内有效），
+  // 落地瞬间自动生效，避免「提前按了却没跳」。
+  if (jumpPressed)
+    player->jumpBufferTimer = JUMP_BUFFER_TIME;
+  else if (player->jumpBufferTimer > 0.f)
+    player->jumpBufferTimer -= dt;
+
+  // 起跳：在地面（或土狼宽限窗口内）且跳跃键按下/缓冲生效/按住时立即起跳。
+  // 保留「按住可无缝连跳」的原有手感。
+  if ((player->isOnTheGround || player->coyoteTimer > 0.f) &&
+      (jumpPressed || jumpHeld || player->jumpBufferTimer > 0.f)) {
     player->velocity.y = JUMP_SPEED;
     player->isOnTheGround = false;
+    player->coyoteTimer = 0.f;         // 起跳后立即消耗宽限，避免二段跳
+    player->jumpBufferTimer = 0.f;     // 消耗缓冲
     InitTimer(&player->jumpHoldTimer); // 记录起跳时刻
     // 跳跃音效（cat_jump.ogg）：每次起跳瞬间播放一次
     GameAppPlaySound(player->app, player->app->catJumpSound,

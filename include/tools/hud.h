@@ -40,6 +40,10 @@ void HudDrawTime(const GameApp *app, float timeSeconds);
 // 右上角：方框内 ESC 提示（提示玩家按 ESC 暂停）。
 void HudDrawEscHint(const GameApp *app);
 
+// 右上角：指向目标（如关卡红旗）的指南针箭头 + 距离数值。
+// from 为玩家世界坐标、to 为目标世界坐标（相机无旋转/缩放，故方向即屏幕方向）。
+void HudDrawCompass(const GameApp *app, Vector2 from, Vector2 to);
+
 // 单词选项行自适应布局（scene_battle / scene_infinite 的三选一共用）：
 //   每个选项框宽度随对应单词长度浮动（词宽 + padX×2，且不低于 minBoxW），
 //   全部框与 gap 一起在 availW 宽度内居中；若总宽放不下，逐档缩小字号

@@ -60,6 +60,10 @@ typedef struct MazeData {
   GameStack *owner; // 所属栈（MazeEnter 捕获 self->owner，供拼写事件切换场景）
   // 可复用的字母拾取 + 拼写检查组件（词库、谜题、字母实体、交互状态均在其中）
   Character character;
+
+  // 剧情覆盖层（进入关卡时在出生点显示，逐字输出后保留原地，见 systems/story）
+  StoryOverlay story;
+  Vector2 storyAnchor; // 剧情文本框锚点（出生点，世界坐标）
 } MazeData;
 
 // 感谢Deepseek在迷宫生成算法这块儿做出的卓越贡献
@@ -435,6 +439,14 @@ static void MazeEnter(GameScene *self) {
   d->cat.velocity = (Vector2){0, 0};
   d->cat.isOnTheGround = true;
 
+  // 剧情：进入关卡时在出生点显示（打字机逐字输出，输出后保留原地；
+  // 已完整通关一次后不再显示，见 systems/story）
+  StoryOverlayStart(&d->story, d->app->isBeatGameOnce
+                                   ? NULL
+                                   : getStory(d->difficulty, d->level));
+  d->storyAnchor = (Vector2){d->cat.position.x + d->cat.size.x * 0.5f,
+                             d->cat.position.y - 8.0f};
+
   // 跟随镜头
   InitSceneCamera(&d->camera, d->app->logicWidth, d->app->logicHeight, true,
                   CAMERA_FOLLOW_CENTER);
@@ -600,6 +612,9 @@ static void MazeOnSpellWrong(void *ctx) {
 static void MazeUpdate(GameScene *self, float dt) {
   MazeData *d = (MazeData *)self->data;
 
+  // 剧情打字机：逐字输出（暂停时 dt=0 自动冻结）
+  StoryOverlayUpdate(&d->story, dt);
+
   // HP 归零 → 失败
   if (d->cat.health <= 0.0f) {
     GameStackReplace(self->owner, FailSceneCreate(d->app));
@@ -724,6 +739,11 @@ static void MazeDraw(GameScene *self) {
 
   // 头顶字母 + 虚线引导回拼写平台
   CharacterDrawHeld(&d->character, d->app, &d->cat);
+
+  // 剧情文本框：锚定在世界坐标的出生点，不随玩家移动
+  StoryOverlayDrawAnchored(d->app, &d->story, d->storyAnchor.x,
+                           d->storyAnchor.y, STORY_BOX_MAX_WIDTH,
+                           STORY_BOX_FONT_SIZE, 0.0f, (float)MAZE_WORLD_W);
 
   EndSceneCamera(&d->camera);
 

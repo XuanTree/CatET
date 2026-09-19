@@ -47,6 +47,8 @@ typedef enum InfiniteOverAction {
 static const char *const kOverLabels[] = {"Retry", "Back to Menu", "Quit"};
 static const InfiniteOverAction kOverActions[] = {
     INFINITE_OVER_RETRY, INFINITE_OVER_MENU, INFINITE_OVER_QUIT};
+// 结算菜单各条目前置图标（Retry / Back to Menu / Quit）
+static const int kOverIcons[] = {ICON_RESTART, ICON_HOUSE, ICON_EXIT};
 #define INFINITE_OVER_COUNT 3
 
 // 场景阶段
@@ -95,7 +97,7 @@ typedef struct InfiniteSceneData {
 
   // 结算菜单
   MenuNav overNav;          // 键盘导航（W/S/↑↓ 移动，Z 确认，X 返回菜单）
-  int overAction;           // 结算动作：Draw 阶段由按钮写入，Update 消费执行
+  int overAction;           // 结算动作：键盘确认（Z）写入，Update 消费执行
   bool transitionRequested; // 已请求场景切换，防止同帧重复切换
 } InfiniteSceneData;
 
@@ -443,7 +445,7 @@ static void UpdateWrongHold(InfiniteSceneData *d) {
   SetupChoices(d);
 }
 
-// 结算更新：键盘导航 / 鼠标按钮；动作统一在此执行
+// 结算更新：键盘导航（动作统一在此执行；UI 不接收鼠标输入）
 static void UpdateGameOver(GameScene *self) {
   InfiniteSceneData *d = (InfiniteSceneData *)self->data;
 
@@ -806,29 +808,28 @@ static void DrawGameOver(InfiniteSceneData *d) {
                   (screenW - GameAppMeasureText(d->app, stat, statSize)) / 2,
                   242, statSize, LIGHTGRAY);
 
-  // 结算按钮（Retry / Back to Menu / Quit）
+  // 结算按钮（Retry / Back to Menu / Quit）：卡片 + 带图标主题按钮
   const float btnW = 210;
   const float btnH = 40;
-  const float btnX = (screenW - btnW) / 2;
-  const float btnY = screenH / 2.f + 40;
   const float gap = 10;
+  const float panelW = btnW + 40;
+  const float panelH =
+      INFINITE_OVER_COUNT * btnH + (INFINITE_OVER_COUNT - 1) * gap + 28;
+  const float panelX = (screenW - panelW) / 2;
+  const float panelY = screenH / 2.f + 26;
+  UiThemePanel((Rectangle){panelX, panelY, panelW, panelH});
+
+  const float btnX = panelX + (panelW - btnW) / 2;
+  const float btnY = panelY + 14;
 
   for (int i = 0; i < INFINITE_OVER_COUNT; i++) {
     Rectangle rec = {
         .x = btnX, .y = btnY + i * (btnH + gap), .width = btnW, .height = btnH};
-    if (CheckCollisionPointRec(GetMousePosition(), rec)) {
-      d->overNav.selected = i;
-    }
-    if (i == d->overNav.selected) {
-      GuiSetState(STATE_FOCUSED);
-    }
-    bool clicked = GuiButton(rec, kOverLabels[i]);
-    if (i == d->overNav.selected) {
-      GuiSetState(STATE_NORMAL);
-    }
-    if (clicked) {
-      d->overAction = (int)kOverActions[i];
-    }
+    // 主题按钮：带图标 + 键盘选中高亮（见 tools/ui_theme）。鼠标已在
+    // UiThemeApply 中经 GuiLock 全局禁用，此处只绘制、不接收点击，
+    // 结算动作由键盘确认写入 d->overAction。
+    (void)UiThemeButton(rec, kOverIcons[i], kOverLabels[i],
+                        i == d->overNav.selected);
   }
 
   const char *hint = "Move: W/S or Arrows    Confirm: Z    Back: X / ESC";

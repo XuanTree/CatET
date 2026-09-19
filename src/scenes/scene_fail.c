@@ -16,6 +16,9 @@ static const FailAction kFailActions[] = {FAIL_ACTION_QUIT_TO_MENU,
                                           FAIL_ACTION_QUIT};
 #define FAIL_ITEM_COUNT 2
 
+// 失败界面各条目前置图标（Back to Menu / Quit）
+static const int kFailIcons[FAIL_ITEM_COUNT] = {ICON_HOUSE, ICON_EXIT};
+
 // 场景私有数据：栈持有并负责释放
 typedef struct FailData {
   GameApp *app;      // 引用（不拥有）；回到菜单时需传给 StartSceneCreate
@@ -47,7 +50,7 @@ static void FailUpdate(GameScene *self, float dt) {
     d->action = kFailActions[d->nav.selected];
   }
 
-  // 消费动作（raygui 交互在 Draw 阶段写入，此处统一执行切换/退出）
+  // 消费动作（全部来自键盘确认，此处统一执行切换/退出）
   switch (d->action) {
   case FAIL_ACTION_QUIT_TO_MENU:
     // 清空场景栈到只剩开始菜单（回根操作）
@@ -84,12 +87,19 @@ static void FailDraw(GameScene *self) {
                   (screenW - GameAppMeasureText(d->app, subtitle, subSize)) / 2,
                   screenH / 4 + titleSize / 2 + 12, subSize, LIGHTGRAY);
 
-  // 按钮垂直排列
+  // 卡片面板 + 按钮垂直排列（带图标，统一主题见 tools/ui_theme）
   const float btnW = 200;
   const float btnH = 44;
-  const float btnX = (screenW - btnW) / 2;
-  const float btnY = screenH / 2.f + 20;
   const float gap = 14;
+  const float panelW = btnW + 40;
+  const float panelH =
+      FAIL_ITEM_COUNT * btnH + (FAIL_ITEM_COUNT - 1) * gap + 28;
+  const float panelX = (screenW - panelW) / 2;
+  const float panelY = screenH / 2.f + 6;
+  UiThemePanel((Rectangle){panelX, panelY, panelW, panelH});
+
+  const float btnX = panelX + (panelW - btnW) / 2;
+  const float btnY = panelY + 14;
 
   // 底部键盘操作提示（失败界面无返回项，故只提示移动与确认）
   // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍，避免像素字点采样在
@@ -103,21 +113,10 @@ static void FailDraw(GameScene *self) {
     Rectangle rec = {
         .x = btnX, .y = btnY + i * (btnH + gap), .width = btnW, .height = btnH};
 
-    // 鼠标悬停时同步选中高亮，键盘与鼠标保持一致的选中指示
-    if (CheckCollisionPointRec(GetMousePosition(), rec)) {
-      d->nav.selected = i;
-    }
-    // 键盘选中的项以 FOCUSED 状态绘制（高亮）
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_FOCUSED);
-    }
-    bool clicked = GuiButton(rec, kFailLabels[i]);
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_NORMAL);
-    }
-    if (clicked) {
-      d->action = kFailActions[i];
-    }
+    // 主题按钮：带图标 + 键盘选中高亮。鼠标已在 UiThemeApply 中经 GuiLock
+    // 全局禁用，此处只绘制、不接收点击，动作由键盘确认写入 d->action。
+    (void)UiThemeButton(rec, kFailIcons[i], kFailLabels[i],
+                        i == d->nav.selected);
   }
 }
 

@@ -134,9 +134,10 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
   InitWindow(logicWidth, logicHeight, title);
   // 禁用 ESC 默认关闭窗口：ESC 交给主循环用于弹出暂停界面
   SetExitKey(0);
-  // HideCursor(); //
-  // 取消隐藏鼠标。。。我完全想不出来怎么完全禁用鼠标，就这样子吧
-  //  限制最小窗口尺寸，避免被压缩得过小
+  // 鼠标：让 UI「不受鼠标影响」不是靠隐藏光标实现的（隐藏只影响观感，挡不住
+  // 悬停/点击），而是在 UiThemeApply 中调用 GuiLock 锁定 raygui 的全部鼠标
+  // 输入（见 tools/ui_theme），因此这里保持系统默认的可见光标即可。
+  // 限制最小窗口尺寸，避免被压缩得过小
   SetWindowMinSize(logicWidth, logicHeight);
 
   // 禁用 DWM 窗口过渡动画：Windows 11 在无边框全屏/小窗切换（窗口样式 +
@@ -239,6 +240,9 @@ GameApp GameAppInit(const int logicWidth, const int logicHeight,
 // raylib 的鼠标变换为 L = M*scale' + offset'，要得到 L = (M - 黑边)/scale，
 // 但是其实我也不想让这游戏有什么鼠标操作。。。呃？
 // 因此 scale' = 1/scale，offset' = -黑边/scale。
+// 注：raygui 输入已在 UiThemeApply 中经 GuiLock 全局锁定，本游戏的 UI 不再
+// 消费鼠标；这里保留为「窗口像素 → 逻辑坐标」的唯一换算点，若将来解除锁定
+// 仍然正确。
 static float ApplyViewportScale(GameApp *app) {
   float screenW = (float)GetScreenWidth();
   float screenH = (float)GetScreenHeight();
@@ -253,7 +257,8 @@ static float ApplyViewportScale(GameApp *app) {
 }
 
 void GameAppBegin(GameApp *app) {
-  // 先同步鼠标到逻辑坐标，保证本帧 GUI（raygui）命中检测准确
+  // 先同步鼠标到逻辑坐标（UI 已经 GuiLock 不消费鼠标，此映射作为
+  // 「窗口像素 → 逻辑坐标」的唯一换算点保留）
   ApplyViewportScale(app);
   BeginTextureMode(app->target);
   ClearBackground(RAYWHITE);
@@ -451,7 +456,9 @@ void GameAppSetMusicEnabled(GameApp *app, bool enabled) {
   const int t = app->currentMusicTrack;
   if (t < 0 || t >= MUSIC_TRACK_COUNT || !app->musicTrackValid[t])
     return;
-  if (enabled)
+  // 游戏暂停期间不启动播放：仅记忆「已开启」，待取消暂停后由
+  // GameAppSetMusicPaused(false) 续播（与暂停语义一致）
+  if (enabled && !app->musicPaused)
     PlayMusicStream(app->musicTracks[t]);
   else
     StopMusicStream(app->musicTracks[t]);
@@ -485,7 +492,8 @@ void GameAppSetMusicTrack(GameApp *app, MusicTrack track) {
     StopMusicStream(app->musicTracks[prev]);
 
   app->currentMusicTrack = track;
-  if (app->musicEnabled && app->musicTrackValid[track])
+  // 暂停态下只记忆曲目，不立即播放（取消暂停后自动续播，避免暂停中突然出声）
+  if (app->musicEnabled && !app->musicPaused && app->musicTrackValid[track])
     PlayMusicStream(app->musicTracks[track]);
 }
 
@@ -499,9 +507,29 @@ void GameAppStopMusic(GameApp *app) {
   app->currentMusicTrack = -1;
 }
 
+// 暂停/恢复当前背景音乐：PauseMusicStream 只冻结播放位置（不重置），
+// ResumeMusicStream 从冻结处继续，因此不会重新开始播放。musicPaused 记录
+// 当前是否因游戏暂停而暂停，用于无变化时提前返回（避免每帧重复调用）。
+void GameAppSetMusicPaused(GameApp *app, bool paused) {
+  if (!app || app->musicPaused == paused)
+    return;
+  app->musicPaused = paused;
+  // 总开关关闭时本就无音乐在播，无需操作（重新开启时会自行播放）
+  if (!app->musicEnabled)
+    return;
+  const int t = app->currentMusicTrack;
+  if (t < 0 || t >= MUSIC_TRACK_COUNT || !app->musicTrackValid[t])
+    return;
+  if (paused)
+    PauseMusicStream(app->musicTracks[t]);
+  else
+    ResumeMusicStream(app->musicTracks[t]);
+}
+
 // 每帧驱动：持续为当前曲目补充流缓冲（raylib 流式播放必需）。
+// 暂停期间跳过（流已冻结，无需补充缓冲；同时避免暂停中意外推进进度）。
 void GameAppUpdateMusic(const GameApp *app) {
-  if (!app || !app->musicEnabled)
+  if (!app || !app->musicEnabled || app->musicPaused)
     return;
   const int t = app->currentMusicTrack;
   if (t < 0 || t >= MUSIC_TRACK_COUNT || !app->musicTrackValid[t])

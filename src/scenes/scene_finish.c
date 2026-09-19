@@ -14,6 +14,9 @@ static const char *const kFinishLabels[] = {"Back to Menu"};
 static const FinishAction kFinishActions[] = {FINISH_ACTION_BACK_TO_MENU};
 #define FINISH_ITEM_COUNT 1
 
+// 通关结算界面条目前置图标（Back to Menu）
+static const int kFinishIcons[FINISH_ITEM_COUNT] = {ICON_HOUSE};
+
 // 场景私有数据：栈持有并负责释放
 typedef struct FinishData {
   GameApp *app;        // 引用（不拥有）；回到菜单时需传给 StartSceneCreate
@@ -26,6 +29,12 @@ static void FinishEnter(GameScene *self) {
   // 通关胜利音效（game_finish.ogg）：进入通关结算界面时播放
   GameAppPlaySound(d->app, d->app->gameFinishSound,
                    d->app->gameFinishSoundValid);
+  // 剧情系统：完整通关一次即置位（持久化到 save.json），
+  // 之后重新开始游戏不再显示关卡剧情（见 systems/story / save_data）
+  if (!d->app->isBeatGameOnce) {
+    d->app->isBeatGameOnce = true;
+    SaveDataSaveBeatGameOnce(true);
+  }
   MenuNavInit(&d->nav, FINISH_ITEM_COUNT);
 }
 
@@ -44,7 +53,7 @@ static void FinishUpdate(GameScene *self, float dt) {
     d->action = kFinishActions[d->nav.selected];
   }
 
-  // 消费动作（raygui 交互在 Draw 阶段写入，此处统一执行切换/退出）
+  // 消费动作（全部来自键盘确认，此处统一执行切换/退出）
   switch (d->action) {
   case FINISH_ACTION_BACK_TO_MENU:
     // 清空场景栈到只剩开始菜单（回根操作）
@@ -89,12 +98,19 @@ static void FinishDraw(GameScene *self) {
       (screenW - GameAppMeasureText(d->app, timeText, timeSize)) / 2,
       screenH / 4 + titleSize / 2 + 12 + subSize + 24, timeSize, GOLD);
 
-  // 按钮（唯一交互项）：Back to Menu
+  // 卡片面板 + 按钮（唯一交互项）：Back to Menu（带图标，统一主题）
   const float btnW = 200;
   const float btnH = 44;
-  const float btnX = (screenW - btnW) / 2;
-  const float btnY = screenH / 2.f + 20;
   const float gap = 14;
+  const float panelW = btnW + 40;
+  const float panelH =
+      FINISH_ITEM_COUNT * btnH + (FINISH_ITEM_COUNT - 1) * gap + 28;
+  const float panelX = (screenW - panelW) / 2;
+  const float panelY = screenH / 2.f + 6;
+  UiThemePanel((Rectangle){panelX, panelY, panelW, panelH});
+
+  const float btnX = panelX + (panelW - btnW) / 2;
+  const float btnY = panelY + 14;
 
   // 底部键盘操作提示（通关结算界面仅一个按钮，无返回项）
   // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍，避免像素字点采样在
@@ -108,21 +124,10 @@ static void FinishDraw(GameScene *self) {
     Rectangle rec = {
         .x = btnX, .y = btnY + i * (btnH + gap), .width = btnW, .height = btnH};
 
-    // 鼠标悬停时同步选中高亮，键盘与鼠标保持一致的选中指示
-    if (CheckCollisionPointRec(GetMousePosition(), rec)) {
-      d->nav.selected = i;
-    }
-    // 键盘选中的项以 FOCUSED 状态绘制（高亮）
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_FOCUSED);
-    }
-    bool clicked = GuiButton(rec, kFinishLabels[i]);
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_NORMAL);
-    }
-    if (clicked) {
-      d->action = kFinishActions[i];
-    }
+    // 主题按钮：带图标 + 键盘选中高亮。鼠标已在 UiThemeApply 中经 GuiLock
+    // 全局禁用，此处只绘制、不接收点击，动作由键盘确认写入 d->action。
+    (void)UiThemeButton(rec, kFinishIcons[i], kFinishLabels[i],
+                        i == d->nav.selected);
   }
 }
 

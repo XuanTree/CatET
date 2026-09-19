@@ -15,6 +15,10 @@ static const PauseAction kPauseActions[] = {
     PAUSE_ACTION_RESUME, PAUSE_ACTION_QUIT_TO_MENU, PAUSE_ACTION_QUIT};
 #define PAUSE_ITEM_COUNT 3
 
+// 暂停菜单各条目前置图标（Resume / Quit to Menu / Quit）
+static const int kPauseIcons[PAUSE_ITEM_COUNT] = {ICON_PLAYER_PLAY, ICON_HOUSE,
+                                                  ICON_EXIT};
+
 // 场景私有数据：栈持有并负责释放
 typedef struct PauseData {
   GameApp *app;       // 引用（不拥有）；退出暂停时需复位 app->isPaused
@@ -49,7 +53,7 @@ static void PauseUpdate(GameScene *self, float dt) {
     d->action = kPauseActions[d->nav.selected];
   }
 
-  // 消费动作（含鼠标点击写入的 action），统一执行并复位暂停标志
+  // 消费动作（全部来自键盘确认），统一执行并复位暂停标志
   switch (d->action) {
   case PAUSE_ACTION_RESUME:
     d->app->isPaused = false;
@@ -85,12 +89,19 @@ static void PauseDraw(GameScene *self) {
                   (screenW - GameAppMeasureText(d->app, title, titleSize)) / 2,
                   screenH / 4 - titleSize / 2, titleSize, WHITE);
 
-  // 按钮垂直排列
+  // 卡片面板 + 按钮垂直排列（带图标，统一主题见 tools/ui_theme）
   const float btnW = 200;
   const float btnH = 44;
-  const float btnX = (screenW - btnW) / 2;
-  const float btnY = screenH / 2.f;
   const float gap = 14;
+  const float panelW = btnW + 40;
+  const float panelH =
+      PAUSE_ITEM_COUNT * btnH + (PAUSE_ITEM_COUNT - 1) * gap + 28;
+  const float panelX = (screenW - panelW) / 2;
+  const float panelY = screenH / 2.f - 10;
+  UiThemePanel((Rectangle){panelX, panelY, panelW, panelH});
+
+  const float btnX = panelX + (panelW - btnW) / 2;
+  const float btnY = panelY + 14;
 
   // 底部键盘操作提示
   // 字号取 16 = UI_FONT_BASE_SIZE(48)/3 的整数倍，避免像素字点采样在
@@ -104,21 +115,10 @@ static void PauseDraw(GameScene *self) {
     Rectangle rec = {
         .x = btnX, .y = btnY + i * (btnH + gap), .width = btnW, .height = btnH};
 
-    // 鼠标悬停时同步选中高亮
-    if (CheckCollisionPointRec(GetMousePosition(), rec)) {
-      d->nav.selected = i;
-    }
-    // 键盘选中的项以 FOCUSED 状态绘制（高亮）
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_FOCUSED);
-    }
-    bool clicked = GuiButton(rec, kPauseLabels[i]);
-    if (i == d->nav.selected) {
-      GuiSetState(STATE_NORMAL);
-    }
-    if (clicked) {
-      d->action = kPauseActions[i];
-    }
+    // 主题按钮：带图标 + 键盘选中高亮。鼠标已在 UiThemeApply 中经 GuiLock
+    // 全局禁用，此处只绘制、不接收点击，动作由键盘确认写入 d->action。
+    (void)UiThemeButton(rec, kPauseIcons[i], kPauseLabels[i],
+                        i == d->nav.selected);
   }
 }
 

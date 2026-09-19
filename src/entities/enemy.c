@@ -10,8 +10,8 @@
 // 巡逻参数：单程行走 / 原地停顿时长
 #define ENEMY_WALK_TIME 1.8f
 #define ENEMY_AFK_TIME 1.2f
-// 战斗：触碰后的 1s 定格窗口时长、触发后的冷却时长
-#define ENEMY_BATTLE_DELAY 1.0f
+// 战斗：触碰后的定格窗口时长（缩短以便横版闯关节奏更连贯）、触发后的冷却时长
+#define ENEMY_BATTLE_DELAY 0.55f
 #define ENEMY_BATTLE_COOLDOWN 2.0f
 // 地面矩形（与玩家 GroundCollision 一致）：顶面 y = 480-50，高度 50；
 // 宽度由调用场景传入（groundWidth），保持与各场景绘制的地面一致。

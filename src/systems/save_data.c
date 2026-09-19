@@ -7,11 +7,13 @@
 // save.json 全部字段（新增字段须在此登记，读写统一走 LoadAll/SaveAll，
 // 避免多个写入口互相覆盖）。
 typedef struct SaveData {
-  float bestTime;    // 最佳通关时间（秒），< 0 表示尚无记录
-  int infiniteBest;  // 无尽模式单局最高答对数（0 表示尚无记录，
-                     // 独立于主线速通，见 scene_infinite）
-  bool soundEnabled; // 音效总开关
-  bool musicEnabled; // 音乐总开关
+  float bestTime;      // 最佳通关时间（秒），< 0 表示尚无记录
+  int infiniteBest;    // 无尽模式单局最高答对数（0 表示尚无记录，
+                       // 独立于主线速通，见 scene_infinite）
+  bool soundEnabled;   // 音效总开关
+  bool musicEnabled;   // 音乐总开关
+  bool isBeatGameOnce; // 是否已完整通关一次游戏（剧情系统：为 true 时后续
+                       // 游戏不再显示关卡剧情，见 systems/story）
 } SaveData;
 
 static const char *SavePath(void) {
@@ -30,8 +32,7 @@ static bool ParseBoolField(const char *json, const char *key, bool fallback) {
     return fallback;
   // 跳过冒号后的空白
   const char *value = colon + 1;
-  while (*value == ' ' || *value == '\t' || *value == '\r' ||
-         *value == '\n') {
+  while (*value == ' ' || *value == '\t' || *value == '\r' || *value == '\n') {
     value++;
   }
   if (strncmp(value, "true", 4) == 0)
@@ -50,8 +51,7 @@ static int ParseIntField(const char *json, const char *key, int fallback) {
   if (colon == NULL)
     return fallback;
   const char *value = colon + 1;
-  while (*value == ' ' || *value == '\t' || *value == '\r' ||
-         *value == '\n') {
+  while (*value == ' ' || *value == '\t' || *value == '\r' || *value == '\n') {
     value++;
   }
   const int v = atoi(value);
@@ -67,6 +67,7 @@ static SaveData SaveDataLoadAll(void) {
       .infiniteBest = 0,
       .soundEnabled = DEFAULT_SOUND_ENABLED,
       .musicEnabled = DEFAULT_MUSIC_ENABLED,
+      .isBeatGameOnce = false,
   };
   const char *path = SavePath();
   FILE *fp = fopen(path, "rb");
@@ -88,10 +89,11 @@ static SaveData SaveDataLoadAll(void) {
     }
   }
   data.infiniteBest = ParseIntField(buf, "infiniteBest", 0);
-  data.soundEnabled = ParseBoolField(buf, "soundEnabled",
-                                     DEFAULT_SOUND_ENABLED);
-  data.musicEnabled = ParseBoolField(buf, "musicEnabled",
-                                     DEFAULT_MUSIC_ENABLED);
+  data.soundEnabled =
+      ParseBoolField(buf, "soundEnabled", DEFAULT_SOUND_ENABLED);
+  data.musicEnabled =
+      ParseBoolField(buf, "musicEnabled", DEFAULT_MUSIC_ENABLED);
+  data.isBeatGameOnce = ParseBoolField(buf, "isBeatGameOnce", false);
   return data;
 }
 
@@ -100,17 +102,18 @@ static void SaveDataSaveAll(const SaveData *data) {
   FILE *fp = fopen(SavePath(), "wb");
   if (fp == NULL)
     return; // 写失败静默降级（不崩溃），下次运行再读旧值
-  fprintf(fp, "{\"bestTime\": %.2f, \"infiniteBest\": %d, "
-              "\"soundEnabled\": %s, \"musicEnabled\": %s}\n",
+  fprintf(fp,
+          "{\"bestTime\": %.2f, \"infiniteBest\": %d, "
+          "\"soundEnabled\": %s, \"musicEnabled\": %s, "
+          "\"isBeatGameOnce\": %s}\n",
           data->bestTime, data->infiniteBest,
           data->soundEnabled ? "true" : "false",
-          data->musicEnabled ? "true" : "false");
+          data->musicEnabled ? "true" : "false",
+          data->isBeatGameOnce ? "true" : "false");
   fclose(fp);
 }
 
-float SaveDataLoadBestTime(void) {
-  return SaveDataLoadAll().bestTime;
-}
+float SaveDataLoadBestTime(void) { return SaveDataLoadAll().bestTime; }
 
 void SaveDataSaveBestTime(float bestTime) {
   if (bestTime < 0.0f)
@@ -138,18 +141,26 @@ bool SaveDataSaveInfiniteBest(int best) {
   return true;
 }
 
-bool SaveDataLoadSoundEnabled(void) {
-  return SaveDataLoadAll().soundEnabled;
-}
+bool SaveDataLoadSoundEnabled(void) { return SaveDataLoadAll().soundEnabled; }
 
-bool SaveDataLoadMusicEnabled(void) {
-  return SaveDataLoadAll().musicEnabled;
-}
+bool SaveDataLoadMusicEnabled(void) { return SaveDataLoadAll().musicEnabled; }
 
 void SaveDataSaveSettings(bool soundEnabled, bool musicEnabled) {
   // 先读全量再只改音频开关，避免覆盖已持久化的最佳通关时间/无尽纪录
   SaveData data = SaveDataLoadAll();
   data.soundEnabled = soundEnabled;
   data.musicEnabled = musicEnabled;
+  SaveDataSaveAll(&data);
+}
+
+// ── 剧情系统：是否已完整通关一次（见 systems/story）──────────────────────
+bool SaveDataLoadBeatGameOnce(void) { return SaveDataLoadAll().isBeatGameOnce; }
+
+void SaveDataSaveBeatGameOnce(bool value) {
+  // 先读全量再只改本字段，避免覆盖其它已持久化数据（最佳时间/无尽/音频）
+  SaveData data = SaveDataLoadAll();
+  if (data.isBeatGameOnce == value)
+    return;
+  data.isBeatGameOnce = value;
   SaveDataSaveAll(&data);
 }

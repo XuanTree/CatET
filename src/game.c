@@ -1,4 +1,5 @@
 #include "game.h"
+#include <raylib.h>
 
 // 逻辑分辨率固定不变，窗口放大时通过 RenderTexture 等比缩放，画面不变糊
 #define LOGIC_WIDTH 640
@@ -7,6 +8,8 @@
 void Run() {
   // 框架初始化：窗口、图标、音频、固定分辨率渲染目标
   GameApp app = GameAppInit(LOGIC_WIDTH, LOGIC_HEIGHT, "CatET");
+  // 全局 UI 主题：统一 raygui 控件配色（见 tools/ui_theme）
+  UiThemeApply();
   // 本局错词本/间隔重复抽词（全局、跨关卡共享；新游戏在开始菜单重置）。
   // static：Run 只调用一次，study 随进程存活；GameApp 仅持指针不拥有。
   static StudyTracker s_study;
@@ -17,6 +20,8 @@ void Run() {
   // 音频总开关初始化：读取持久化的音效/音乐设置（无存档时保持默认开启）
   GameAppSetSoundEnabled(&app, SaveDataLoadSoundEnabled());
   GameAppSetMusicEnabled(&app, SaveDataLoadMusicEnabled());
+  // 剧情系统：读取「已完整通关一次」标记（true 时后续游戏不再显示关卡剧情）
+  app.isBeatGameOnce = SaveDataLoadBeatGameOnce();
 
   // 创建场景栈并压入初始场景：启动名言过场（scene_intro，黑底白字显示一句
   // 名言，3s 后 / 按 X 跳过 → 经通用过渡进入开始菜单）
@@ -27,6 +32,8 @@ void Run() {
   while (!WindowShouldClose() && !GameStackWantsQuit(stack)) {
     GameAppPollGlobalInput(); // F11 / Alt+Enter 全屏切换
 
+    // 隐藏鼠标
+    HideCursor();
     // 暂停：ESC 在「游戏场景」与「暂停界面」之间切换（isPaused 状态机）。
     // 仅当栈顶场景允许暂停（pauseable）时才能进入暂停；开始界面等菜单
     // pauseable=false，无法调出暂停画面。ESC 进入/退出统一在此处理，
@@ -55,7 +62,12 @@ void Run() {
     SpeedrunTick(&app, dt);     // 隐式全局计时器：从第一关开始累计到失败/通关
     GameStackUpdate(stack, dt); // 帧首 flush 切换请求 + 驱动栈顶场景
 
-    // 背景音乐：每帧为当前曲目补充流缓冲（暂停时也继续，音乐不随游戏暂停中断）
+    // 暂停状态同步到背景音乐：暂停时暂停当前 BGM（仅冻结播放位置），
+    // 取消暂停后从原位置继续播放（不会重新开始）。PauseScene 的返回/退出
+    // 动作也会改动 app.isPaused，故在栈更新后统一同步一次。
+    GameAppSetMusicPaused(&app, app.isPaused);
+
+    // 背景音乐：每帧为当前曲目补充流缓冲（流式播放必需；暂停时内部跳过）
     GameAppUpdateMusic(&app);
 
     // 统一绘制：先绘制到固定分辨率渲染目标，再等比缩放到窗口
