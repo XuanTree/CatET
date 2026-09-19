@@ -4,7 +4,8 @@
 make_icons.py —— 从 assets/sprites/icon.png 生成打包/安装用的图标：
 
     packaging/CatET.ico   Windows 图标（ICO，内嵌 PNG 数据，Vista+ 兼容）
-    packaging/CET.icns    macOS 图标（ICNS，内嵌 PNG 数据）
+    packaging/CatET.icns  macOS 图标（ICNS，内嵌 PNG 数据；与 CPACK_BUNDLE_NAME
+                          及 Info.plist 的 CFBundleIconFile 同名，系统才会显示）
 
 用法:
     python make_icons.py <icon.png> <output_dir>
@@ -183,7 +184,7 @@ def main():
 
     # ICNS：16 原图 + 256 放大
     png_256 = upscale_png(png, w, h, 256, 256)
-    icns_path = os.path.join(out_dir, "CET.icns")
+    icns_path = os.path.join(out_dir, "CatET.icns")
     with open(icns_path, "wb") as f:
         f.write(build_icns([(b"icp4", png), (b"ic08", png_256)]))
     print("wrote %s" % icns_path)

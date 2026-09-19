@@ -1,0 +1,215 @@
+name: Build & Release
+
+# 打 tag（v*）即自动构建三平台安装包并发布到 GitHub Releases；
+# 也可在 Actions 页面手动触发，此时只产出可下载的 artifacts（不创建 Release）。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（不含 v 前缀，如 0.7.0；留空则取 tag 名，手动触发请填写）"
+        required: false
+        default: ""
+
+# 创建/更新 Release 需要写权限
+permissions:
+  contents: write
+
+# 同一个 tag/分支串行，避免并发写同一个 Release
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Windows：MSYS2 MINGW64（与 CMakePresets.json 路径一致）+ NSIS 安装向导 ──
+  windows:
+    name: Windows x64 (NSIS installer)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析版本号
+        id: ver
+        shell: pwsh
+        run: |
+          $v = "${{ inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($v)) { $v = "$env:GITHUB_REF_NAME" }
+          $v = $v -replace '^v', ''
+          if ([string]::IsNullOrWhiteSpace($v)) { $v = "0.0.0" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "本次构建版本号: $v"
+
+      # 仓库不收录 assets/fonts/pixel_font.ttf（许可原因），构建前取回，
+      # 使其与本地开发一致地被 pack_assets.py 内嵌进可执行文件。
+      - name: 取回内嵌 UI 字体
+        continue-on-error: true
+        run: python .github/scripts/fetch_font.py
+
+      # build.py 会在 PATH 与默认安装目录里查找 makensis
+      - name: 安装 NSIS
+        run: choco install nsis --no-progress -y
+
+      - name: 安装 MSYS2 工具链
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-python
+
+      - name: 构建 + NSIS 打包
+        shell: msys2 {0}
+        env:
+          CATET_VERSION: ${{ steps.ver.outputs.version }}
+        run: python build.py --platform windows
+
+      - name: 整理产物
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item Windows\* dist\ -Force
+          Get-ChildItem dist | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatET-Windows-x64
+          path: dist/*
+          if-no-files-found: error
+
+  # ── Linux：deb / rpm 系统安装包（x64 与 arm64）──────────────────────────────
+  linux:
+    name: Linux ${{ matrix.arch }} (deb/rpm)
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+          # GitHub 托管的 arm64 运行器（公开仓库可用；若不可用，删掉该项即可）
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析版本号
+        id: ver
+        shell: bash
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$GITHUB_REF_NAME"
+          v="${v#v}"
+          [ -n "$v" ] || v="0.0.0"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "本次构建版本号: $v"
+
+      - name: 取回内嵌 UI 字体
+        continue-on-error: true
+        run: python3 .github/scripts/fetch_font.py
+
+      # raylib 6.0 由 FetchContent 自行编译（静态），这里装的是它链接所需的
+      # GL / X11 开发库与打包工具（rpmbuild 用于生成 rpm）。
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake python3 pkg-config rpm dpkg-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libx11-dev libxrandr-dev \
+            libxi-dev libxcursor-dev libxinerama-dev libxkbcommon-dev
+
+      - name: 构建 + 打包（DEB / RPM）
+        env:
+          CATET_VERSION: ${{ steps.ver.outputs.version }}
+        run: python3 build.py --platform linux
+
+      - name: 整理产物
+        run: |
+          mkdir -p dist
+          cp Linux/*.deb Linux/*.rpm dist/
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatET-Linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ── macOS：.app bundle + DMG 安装镜像（Apple Silicon 与 Intel）──────────────
+  macos:
+    name: macOS ${{ matrix.arch }} (dmg)
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-13
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析版本号
+        id: ver
+        shell: bash
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$GITHUB_REF_NAME"
+          v="${v#v}"
+          [ -n "$v" ] || v="0.0.0"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "本次构建版本号: $v"
+
+      - name: 取回内嵌 UI 字体
+        continue-on-error: true
+        run: python3 .github/scripts/fetch_font.py
+
+      - name: 构建 + DMG 打包
+        env:
+          CATET_VERSION: ${{ steps.ver.outputs.version }}
+        run: python3 build.py --platform macos
+
+      - name: 整理产物
+        run: |
+          mkdir -p dist
+          cp MacOS/*.dmg dist/
+          ls -lh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CatET-MacOS-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ── 汇总：把各平台安装包发布到 Releases（仅 tag 触发时）────────────────────
+  release:
+    name: 发布到 Releases
+    needs: [windows, linux, macos]
+    # 即使某个平台构建失败也照常发布已成功的产物（缺失部分在页面上一目了然）
+    if: always() && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载全部构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: CatET-*
+          merge-multiple: true
+
+      - name: 列出待发布文件
+        run: ls -lh release-assets
+
+      - name: 创建 / 更新 Release 并上传安装包
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --title "$tag" --generate-notes
+          gh release upload "$tag" release-assets/* --clobber

@@ -99,8 +99,43 @@ On a platformer level, touching an enemy triggers a **turn-based battle**:
 ## Supported Platforms
 
 - **Windows** — native via MinGW (UCRT64); installable as an **NSIS** setup `.exe`.
-- **Linux** — native or cross-built via WSL; packaged as **DEB**, **RPM**, and **TGZ**.
-- **macOS** — packaging rules (`.app` Bundle + DMG) are scaffolded in CMake but not yet CI-tested.
+- **Linux** — native or cross-built via WSL; installable as **DEB** / **RPM** packages.
+- **macOS** — `.app` bundle wrapped in a **DMG** drag-and-drop image.
+
+Every installer ships a single self-contained executable (all assets are embedded,
+see [Resource embedding](#resource-embedding)), so no game resources are exposed in
+the file manager.
+
+---
+
+## Prebuilt installers (GitHub Releases)
+
+Push a tag and GitHub Actions builds + publishes every platform installer:
+
+```sh
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+[`.github/workflows/release.yml`](.github/workflows/release.yml) then builds
+
+| Platform | Runner | Artifact |
+|---|---|---|
+| Windows x64 | `windows-latest` (MSYS2 MINGW64 + NSIS) | `CatET-<ver>-Windows-Setup-x64.exe` — setup wizard |
+| Linux x64 / arm64 | `ubuntu-22.04` / `ubuntu-24.04-arm` | `CatET-<ver>-Linux-<arch>.deb` / `.rpm` |
+| macOS arm64 / x64 | `macos-14` / `macos-13` | `CatET-<ver>-MacOS-<arch>.dmg` |
+
+and attaches all of them to the Release for that tag. Artifacts follow the naming
+rule `CatET-<版本>-<平台>[-Setup]-<架构>.<扩展名>`. The version baked into the
+installers comes from the tag itself (the workflow exports `CATET_VERSION`), so tag
+`v0.7.0` produces e.g. `CatET-0.7.0-Windows-Setup-x64.exe`. The workflow can also be
+started manually from the Actions tab — that run only produces downloadable
+artifacts, no Release.
+
+The UI font (`assets/fonts/pixel_font.ttf`) stays out of the repo for licensing
+reasons; CI fetches it with
+[`.github/scripts/fetch_font.py`](.github/scripts/fetch_font.py) before configuring,
+so release builds are identical to local ones. Without network access the build still
+succeeds, but falls back to raylib's built-in font.
 
 ---
 
@@ -112,7 +147,7 @@ On a platformer level, touching an enemy triggers a **turn-based battle**:
 - A C11 compiler: **GCC** (MinGW on Windows, `gcc` on Linux)
 - **Python 3** (used by the asset-embedding step)
 - **raylib 6.0** — if not found on the system, CMake automatically downloads and builds it via `FetchContent` (requires network access; use a proxy if GitHub is slow)
-- *(Optional, for packaging)* **NSIS** on Windows; `dpkg-deb` / `rpmbuild` on Linux
+- *(Optional, for packaging)* **NSIS** on Windows; `dpkg-deb` / `rpmbuild` on Linux; **clang** (Xcode Command Line Tools) on macOS
 
 ### Windows (MinGW)
 
@@ -137,15 +172,18 @@ A helper script builds and packages installers into the workspace root:
 ```sh
 python build.py                    # build for the current platform
 python build.py --platform windows # only Windows (NSIS .exe)
-python build.py --platform linux   # Linux natively or via WSL
-python build.py --all              # try both platforms
+python build.py --platform linux   # Linux natively or via WSL (deb + rpm)
+python build.py --platform macos   # macOS only (dmg)
+python build.py --all              # try both Windows and Linux
 ```
 
-Generated artifacts (named `CatET-<platform>-<arch>-v<version>`):
+Generated artifacts (named `CatET-<版本>-<平台>[-Setup]-<架构>.<扩展名>`):
 
 ```
-Windows/  CatET-Windows-x64-v0.2.0.exe      (NSIS installer)
-Linux/    CatET-linux-x64-v0.2.0.deb|.rpm|.tar.gz
+Windows/  CatET-1.0.0-Windows-Setup-x64.exe   (NSIS setup wizard)
+Linux/    CatET-1.0.0-Linux-x64.deb           (dpkg installer)
+Linux/    CatET-1.0.0-Linux-x64.rpm           (rpm installer)
+MacOS/    CatET-1.0.0-MacOS-arm64.dmg         (drag-and-drop image)
 ```
 
 ### Running from the build directory
@@ -163,6 +201,8 @@ CET/
 ├── CMakeLists.txt          # top-level build + CPack packaging
 ├── CMakePresets.json       # CMake presets (MinGW debug/release)
 ├── build.py                # one-click cross-platform packaging script
+├── .github/                # CI: tag → build all platforms + publish to Releases
+├── packaging/              # NSIS resource template / .desktop / Info.plist / icons
 ├── assets/
 │   ├── sprites/            # player / enemy / boss / bullet / platform / icon sprites
 │   ├── sounds/             # sound effects (.ogg, most from Mixkit)
@@ -216,7 +256,8 @@ The game is roguelike by design and has **no save/load**. The only file written 
 | Graphics / audio | [Raylib 6.0](https://github.com/raysan5/raylib) |
 | UI (menus) | [Raygui](https://github.com/raysan5/raygui) |
 | Build system | CMake ≥ 3.21 + CPack + presets |
-| Packaging | NSIS (Windows) / DEB, RPM, TGZ (Linux) |
+| Packaging | NSIS (Windows) / DEB, RPM (Linux) / DMG (macOS) |
+| CI | GitHub Actions — tag `v*` → build + publish to Releases |
 | Tooling | Python 3 (asset embedding), clangd (`compile_commands.json`) |
 
 ---
@@ -254,7 +295,7 @@ origins:
 | [`assets/sounds/`](assets/sounds/) | 9 `.ogg` sound effects | **Not all self-made.** Most come from [Mixkit](https://mixkit.co/) and are used under its free license (see below); the rest were created or edited by me. |
 | [`assets/music/`](assets/music/) | 5 `.mp3` background music tracks (`CatET`, `Find The Letter`, `IDK`, `Test Your Words`, `Wonderful Words Memorizing Time`) | **Composed by Deepseek.** Free to use without restriction — see [About the music](#about-the-music). |
 | [`assets/words/`](assets/words/) | `CET4.txt` / `CET6.txt` word banks | Bundled with the game; format is `word<TAB>part-of-speech. meaning`. |
-| [`assets/fonts/`](assets/fonts/) | `pixel_font.ttf` (UI font) | From [fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font) by [@TakWolf](https://github.com/TakWolf). **Not distributed in this repo** — `assets/fonts/` is git-ignored (see [`.gitignore`](.gitignore:26)). Download it and place it there before building. |
+| [`assets/fonts/`](assets/fonts/) | `pixel_font.ttf` (UI font) | From [fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font) by [@TakWolf](https://github.com/TakWolf). **Not distributed in this repo** — `assets/fonts/` is git-ignored (see [`.gitignore`](.gitignore:27)). Download it and place it there before building (CI does this automatically via [`fetch_font.py`](.github/scripts/fetch_font.py)). |
 | [`assets/data/`](assets/data/) | `save.json` (runtime) | Runtime-only persistence, not a shipped asset. |
 
 ### About the sound effects (important)
@@ -274,7 +315,8 @@ source site's license terms and give proper attribution where required.
 The UI font is `pixel_font.ttf` from
 [fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font). Because it is
 licensed separately and kept out of this repository (see
-[`.gitignore`](.gitignore:26)), you need to fetch it yourself before building:
+[`.gitignore`](.gitignore:27)), you need to fetch it yourself before building
+(or just run `python .github/scripts/fetch_font.py`, which CI also uses):
 
 1. Grab `pixel_font.ttf` (or any `.ttf` from the project) from the
    [releases](https://github.com/TakWolf/fusion-pixel-font/releases).

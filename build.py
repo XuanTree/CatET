@@ -2,18 +2,23 @@
 # -*- coding: utf-8 -*-
 # 感谢Deepseek创建的项目一键式构建脚本
 """
-build.py —— 一键构建并打包 Windows 与 Linux 安装程序，产物放入工作区目录。
+build.py —— 一键构建并打包 Windows / Linux / macOS 安装程序，产物放入工作区目录。
 
 产出格式
 --------
   Windows/   Windows NSIS 安装向导（.exe）
-  Linux/     DEB 安装包（.deb）+ RPM 安装包（.rpm）+ TGZ 压缩包（.tar.gz）
+  Linux/     DEB 安装包（.deb）+ RPM 安装包（.rpm）
+  MacOS/     DMG 安装镜像（.dmg）
+
+  注意：全部资源（贴图/音效/音乐/词库/字体）已由 pack_assets.py 内嵌进可执行
+  文件，安装包内不含 assets/ 目录，安装后也只有 save.json 会在程序同级生成。
 
 用法
 ----
-    python build.py                   # 自动按当前平台构建
+    python build.py                    # 自动按当前平台构建
     python build.py --platform windows
     python build.py --platform linux   # 本机 Linux 或经 WSL
+    python build.py --platform macos   # 需在 macOS 上执行
     python build.py --all              # 依次尝试 Windows 与 Linux
 
 前提
@@ -24,11 +29,13 @@ build.py —— 一键构建并打包 Windows 与 Linux 安装程序，产物放
     rpmbuild，以及 raylib 依赖库：
       sudo apt install cmake build-essential python3 dpkg-dev rpm libgl1-mesa-dev
       libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev libxkbcommon-dev
+  macOS: cmake / clang（Xcode Command Line Tools）/ python3。
 """
 
 import argparse
 import glob
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -43,7 +50,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 # build.py 位于工作区根目录，ROOT 即脚本所在目录
 ROOT = os.path.dirname(os.path.abspath(__file__))
-OUT_DIRS = {"windows": "Windows", "linux": "Linux"}
+OUT_DIRS = {"windows": "Windows", "linux": "Linux", "macos": "MacOS"}
 
 PLATFORM_KEYS = {
     "win32": "windows",
@@ -174,25 +181,24 @@ def build_windows():
 
 # ── Linux ─────────────────────────────────────────────────────────────────────
 def pack_linux(build, dest):
-    """用 CPack 依次生成 DEB / RPM / TGZ 并复制到 dest；返回成功产物数。"""
+    """用 CPack 依次生成 DEB / RPM 并复制到 dest；返回成功产物数。"""
     pkgdir = os.path.join(build, "package")
     # 清空 CPack 输出目录，避免残留的旧版本安装包被复制到 dest
     clean_dir(pkgdir)
     cfg = os.path.join(build, "CPackConfig.cmake")
-    for gen in ("DEB", "RPM", "TGZ"):
+    for gen in ("DEB", "RPM"):
         try:
             run(["cpack", "--config", cfg, "-G", gen, "-B", pkgdir], cwd=ROOT)
         except RuntimeError as e:
             print("[Linux] %s 打包失败：%s" % (gen, e))
     n = copy_artifacts(os.path.join(pkgdir, "CatET-*.deb"), dest)
     n += copy_artifacts(os.path.join(pkgdir, "CatET-*.rpm"), dest)
-    n += copy_artifacts(os.path.join(pkgdir, "CatET-*.tar.gz"), dest)
     return n
 
 
 def build_linux_native():
     clean_platform_dir("linux")
-    print("\n===== [Linux] 原生构建 + 打包（DEB/RPM/TGZ）=====")
+    print("\n===== [Linux] 原生构建 + 打包（DEB/RPM）=====")
     for t in ("cmake", "gcc", "python3"):
         if not shutil.which(t):
             print("[Linux] 缺少工具 %s，请先安装。" % t)
@@ -247,11 +253,8 @@ def build_linux_via_wsl():
         "-B out/build/linux-release/package ; "
         "cpack --config out/build/linux-release/CPackConfig.cmake -G RPM "
         "-B out/build/linux-release/package ; "
-        "cpack --config out/build/linux-release/CPackConfig.cmake -G TGZ "
-        "-B out/build/linux-release/package ; "
         "cp -f out/build/linux-release/package/CatET-*.deb Linux/ ; "
-        "cp -f out/build/linux-release/package/CatET-*.rpm Linux/ ; "
-        "cp -f out/build/linux-release/package/CatET-*.tar.gz Linux/"
+        "cp -f out/build/linux-release/package/CatET-*.rpm Linux/"
     ) % wsl_root
     res = run_wsl_root(script)
     if res.returncode != 0:
@@ -265,16 +268,51 @@ def build_linux_via_wsl():
     # （避免把 Linux/ 里的文件复制回 Linux/ 自身导致 WinError 32）。
     n = len(glob.glob(os.path.join(ROOT, "Linux", "CatET-*.deb")))
     n += len(glob.glob(os.path.join(ROOT, "Linux", "CatET-*.rpm")))
-    n += len(glob.glob(os.path.join(ROOT, "Linux", "CatET-*.tar.gz")))
     print("[Linux] 已放入 %s（%d 个文件）" % (dest, n))
+    return n > 0
+
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+def build_macos():
+    """在 macOS 上构建 .app bundle，并打包成 DMG 安装镜像。"""
+    clean_platform_dir("macos")
+    print("\n===== [macOS] 构建 + DMG 打包 =====")
+    for t in ("cmake", "clang", "python3"):
+        if not shutil.which(t):
+            print("[macOS] 缺少工具 %s，请先安装 Xcode Command Line Tools 或 "
+                  "brew install %s。" % (t, t))
+            return False
+
+    build = os.path.join(ROOT, "out", "build", "macos-release")
+    # 架构跟随当前机器：Apple Silicon → arm64，Intel → x86_64，
+    # 与 CMakeLists 中用于安装包命名的 CMAKE_SYSTEM_PROCESSOR 保持一致。
+    arch = "arm64" if platform.machine() == "arm64" else "x86_64"
+    run(["cmake", "-S", ROOT, "-B", build, "-DCMAKE_BUILD_TYPE=Release",
+         "-DCMAKE_OSX_ARCHITECTURES=" + arch], cwd=ROOT)
+    run(["cmake", "--build", build, "--config", "Release"], cwd=ROOT)
+
+    pkgdir = os.path.join(build, "package")
+    clean_dir(pkgdir)
+    cfg = os.path.join(build, "CPackConfig.cmake")
+    # DragNDrop 生成 .dmg 安装镜像（发布用）；Bundle 生成 .app 目录形式，
+    # 仅在需要检查包内容时有意义，这里一并尝试但不作为发布产物。
+    for gen in ("DragNDrop", "Bundle"):
+        try:
+            run(["cpack", "--config", cfg, "-G", gen, "-B", pkgdir], cwd=ROOT)
+        except RuntimeError as e:
+            print("[macOS] %s 打包失败：%s" % (gen, e))
+
+    dest = ensure_platform_dir("macos")
+    n = copy_artifacts(os.path.join(pkgdir, "CatET-*.dmg"), dest)
+    print("[macOS] 已放入 %s（%d 个文件）" % (dest, n))
     return n > 0
 
 
 # ── 主流程 ────────────────────────────────────────────────────────────────────
 def main():
     ap = argparse.ArgumentParser(
-        description="一键构建并打包 Windows / Linux 安装程序")
-    ap.add_argument("--platform", choices=["windows", "linux"],
+        description="一键构建并打包 Windows / Linux / macOS 安装程序")
+    ap.add_argument("--platform", choices=["windows", "linux", "macos"],
                     help="只构建指定平台（不指定则按当前平台）")
     ap.add_argument("--all", action="store_true",
                     help="尝试构建 Windows 与 Linux 两个平台")
@@ -288,11 +326,11 @@ def main():
     elif args.all:
         targets = ["windows", "linux"]
     else:
-        # 当前平台（macOS 不在支持范围，给出提示）
-        targets = [current] if current in ("windows", "linux") else []
+        # 当前平台自动识别（--all 只覆盖 Windows/Linux；macOS 需显式指定）
+        targets = [current] if current in ("windows", "linux", "macos") else []
         if not targets:
             print("[提示] 当前平台 %s 不在构建范围内，请用 --platform "
-                  "windows/linux 或 --all。" % current)
+                  "windows/linux/macos 或 --all。" % current)
 
     results = {}
     for t in targets:
@@ -310,6 +348,12 @@ def main():
                     results[t] = build_linux_via_wsl()
                 else:
                     print("[Linux] 请在 Linux 或 Windows(WSL) 上构建。")
+                    results[t] = False
+            elif t == "macos":
+                if current == "macos":
+                    results[t] = build_macos()
+                else:
+                    print("[macOS] 只能在 macOS 上构建，跳过。")
                     results[t] = False
         except Exception as e:  # 单个平台失败不中断其它平台
             print("[%s] 构建异常: %s" % (t, e))
