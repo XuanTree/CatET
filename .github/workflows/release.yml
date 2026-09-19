@@ -27,6 +27,11 @@ jobs:
   windows:
     name: Windows x64 (NSIS installer)
     runs-on: windows-latest
+    env:
+      # Windows 控制台默认 cp1252 / GBK：让本 job 内所有 Python 步骤按 UTF-8
+      # 输出，避免中文日志把步骤打成失败（fetch_font.py 内也做了同样处理）。
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -47,8 +52,9 @@ jobs:
         continue-on-error: true
         run: python .github/scripts/fetch_font.py
 
-      # build.py 会在 PATH 与默认安装目录里查找 makensis
-      - name: 安装 NSIS
+      # NSIS 优先用 MSYS2 包（下面装），choco 仅作兜底，失败不阻断
+      - name: 安装 NSIS（兜底）
+        continue-on-error: true
         run: choco install nsis --no-progress -y
 
       - name: 安装 MSYS2 工具链
@@ -62,19 +68,74 @@ jobs:
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-make
             mingw-w64-x86_64-python
+            mingw-w64-x86_64-nsis
 
+      # 工具链自检：失败时能直接从日志看出是缺工具还是路径不对
+      - name: 工具链自检
+        shell: msys2 {0}
+        run: |
+          echo "MINGW_PREFIX=$MINGW_PREFIX"
+          cmake --version | head -1
+          gcc --version | head -1
+          python -V
+          for t in mingw32-make make makensis windres; do
+            printf '%-14s %s\n' "$t" "$(command -v "$t" || echo MISSING)"
+          done
+
+      # 刻意不复用 CMakePresets.json：里面写死了 C:/msys64/mingw64/... 的绝对
+      # 路径，一旦 runner 上 MSYS2 的安装位置不同就会配置失败。这里让 CMake
+      # 直接从 PATH 找 gcc/make，并显式指定 Python 解释器。
       - name: 构建 + NSIS 打包
         shell: msys2 {0}
         env:
           CATET_VERSION: ${{ steps.ver.outputs.version }}
-        run: python build.py --platform windows
-
-      - name: 整理产物
-        shell: pwsh
+          MSYSTEM: MINGW64
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item Windows\* dist\ -Force
-          Get-ChildItem dist | Format-Table Name, Length
+          set -euo pipefail
+          # 所有路径都用 cygpath -m 转成本机绝对路径（正斜杠），
+          # 避免把 /mingw64/... 这类 MSYS 路径直接交给原生 CMake。
+          PY="$(cygpath -m "$(command -v python)")"
+          CC_BIN="$(cygpath -m "$(command -v gcc)")"
+          CXX_BIN="$(cygpath -m "$(command -v g++)")"
+          MAKE_BIN="$(cygpath -m "$(command -v mingw32-make)")"
+          echo "Python: $PY"
+          echo "CC:     $CC_BIN"
+          echo "CXX:    $CXX_BIN"
+          echo "MAKE:   $MAKE_BIN"
+
+          # 显式钉住编译器与构建器：CMake 在 Windows runner 上的自动探测不可靠，
+          # 之前沿用 CMakePresets.json 里写死的 C:/msys64/mingw64/bin/gcc.exe 时
+          # 直接报 "The C compiler identification is unknown"。
+          cmake -S . -B out/build/ci-win -G "MinGW Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DPython3_EXECUTABLE="$PY" \
+            -DCMAKE_C_COMPILER="$CC_BIN" \
+            -DCMAKE_CXX_COMPILER="$CXX_BIN" \
+            -DCMAKE_MAKE_PROGRAM="$MAKE_BIN"
+          cmake --build out/build/ci-win -j"$(nproc)"
+
+          # makensis 查找：MSYS2 的 mingw-w64-x86_64-nsis 优先，其次 choco 的
+          # 默认安装目录。CPack 的 NSIS 生成器是「从 PATH 里找 makensis」的，
+          # 因此找到后必须把它所在目录并入 PATH，否则会报
+          # "Cannot find NSIS compiler makensis"。
+          found="$(command -v makensis || true)"
+          if [ -z "$found" ] && [ -x '/c/Program Files (x86)/NSIS/makensis.exe' ]; then
+            found='/c/Program Files (x86)/NSIS/makensis.exe'
+          fi
+          if [ -z "$found" ]; then
+            echo "::error::找不到 makensis，NSIS 未安装成功"
+            exit 1
+          fi
+          MAKENSIS="$(cygpath -m "$found")"
+          export PATH="$(dirname "$found"):$PATH"
+          echo "makensis: $MAKENSIS"
+
+          mkdir -p out/package dist
+          cpack --config out/build/ci-win/CPackConfig.cmake -G NSIS \
+            -B out/package -D CPACK_NSIS_EXECUTABLE="$MAKENSIS"
+          cp out/package/*.exe dist/
+          ls -lh dist
 
       - uses: actions/upload-artifact@v4
         with:

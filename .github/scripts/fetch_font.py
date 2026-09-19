@@ -29,6 +29,16 @@ import sys
 import urllib.request
 import zipfile
 
+# Windows 控制台默认编码是 cp1252 / GBK，直接 print 中文会抛
+# UnicodeEncodeError，把「只是打日志」的步骤变成红色失败（CI 上踩过）。
+# 因此在任何 print 之前强制 UTF-8，并让不可编码字符降级替换而不是抛异常。
+if sys.platform == "win32":
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
 # 与本地开发使用的同一版本：fusion-pixel-font 12px monospaced zh_hans
 FONT_VERSION = "2026.09.01"
 FONT_ZIP = ("https://github.com/TakWolf/fusion-pixel-font/releases/download/"
