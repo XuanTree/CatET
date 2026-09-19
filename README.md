@@ -111,7 +111,7 @@ On a platformer level, touching an enemy triggers a **turn-based battle**:
 
 - **Windows** — native via MinGW (UCRT64); installable as an **NSIS** setup `.exe`.
 - **Linux** — native or cross-built via WSL; installable as **DEB** / **RPM** packages.
-- **macOS** — `.app` bundle wrapped in a **DMG** drag-and-drop image.
+- **macOS** — universal `.app` bundle (Apple Silicon + Intel in one binary) wrapped in a **DMG** drag-and-drop image.
 
 Every installer ships a single self-contained executable (all assets are embedded,
 see [Resource embedding](#resource-embedding)), so no game resources are exposed in
@@ -133,7 +133,7 @@ git tag v1.0.0 && git push origin v1.0.0
 |---|---|---|
 | Windows x64 | `windows-latest` (MSYS2 MINGW64 + NSIS) | `CatET-<ver>-Windows-Setup-x64.exe` — setup wizard |
 | Linux x64 / arm64 | `ubuntu-22.04` / `ubuntu-24.04-arm` | `CatET-<ver>-Linux-<arch>.deb` / `.rpm` |
-| macOS arm64 / x64 | `macos-14` / `macos-13` | `CatET-<ver>-MacOS-<arch>.dmg` |
+| macOS universal (arm64 + Intel) | `macos-14` | `CatET-<ver>-MacOS-universal.dmg` |
 
 and attaches all of them to the Release for that tag. Artifacts follow the naming
 rule `CatET-<version>-<platform>[-Setup]-<arch>.<ext>`. The version baked into the
@@ -194,7 +194,7 @@ Generated artifacts (named `CatET-<version>-<platform>[-Setup]-<arch>.<ext>`):
 Windows/  CatET-1.0.0-Windows-Setup-x64.exe   (NSIS setup wizard)
 Linux/    CatET-1.0.0-Linux-x64.deb           (dpkg installer)
 Linux/    CatET-1.0.0-Linux-x64.rpm           (rpm installer)
-MacOS/    CatET-1.0.0-MacOS-arm64.dmg         (drag-and-drop image)
+MacOS/    CatET-1.0.0-MacOS-universal.dmg     (drag-and-drop image)
 ```
 
 ### Running from the build directory

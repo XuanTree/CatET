@@ -18,7 +18,9 @@ build.py —— 一键构建并打包 Windows / Linux / macOS 安装程序，产
     python build.py                    # 自动按当前平台构建
     python build.py --platform windows
     python build.py --platform linux   # 本机 Linux 或经 WSL
-    python build.py --platform macos   # 需在 macOS 上执行
+    python build.py --platform macos   # 需在 macOS 上执行（默认按本机架构）
+    CATET_MACOS_ARCH="arm64;x86_64" python build.py --platform macos
+                                       # 通用二进制（Apple Silicon + Intel 同一个包）
     python build.py --all              # 依次尝试 Windows 与 Linux
 
 前提
@@ -284,12 +286,18 @@ def build_macos():
             return False
 
     build = os.path.join(ROOT, "out", "build", "macos-release")
-    # 架构跟随当前机器：Apple Silicon → arm64，Intel → x86_64，
-    # 与 CMakeLists 中用于安装包命名的 CMAKE_SYSTEM_PROCESSOR 保持一致。
-    arch = "arm64" if platform.machine() == "arm64" else "x86_64"
+    # 默认架构跟随当前机器：Apple Silicon → arm64，Intel → x86_64。
+    # 可用环境变量覆盖，例如 CI 在 arm64 runner 上一次出通用二进制：
+    #     CATET_MACOS_ARCH="arm64;x86_64" python build.py --platform macos
+    # （这样就不必依赖稀缺的 Intel macOS runner）
+    arch = os.environ.get("CATET_MACOS_ARCH") or (
+        "arm64" if platform.machine() == "arm64" else "x86_64")
+    print("[macOS] 目标架构: %s" % arch)
     run(["cmake", "-S", ROOT, "-B", build, "-DCMAKE_BUILD_TYPE=Release",
          "-DCMAKE_OSX_ARCHITECTURES=" + arch], cwd=ROOT)
-    run(["cmake", "--build", build, "--config", "Release"], cwd=ROOT)
+    # -j：多核并行编译，避免单线程看起来像卡死
+    run(["cmake", "--build", build, "--config", "Release",
+         "-j", str(os.cpu_count() or 4)], cwd=ROOT)
 
     pkgdir = os.path.join(build, "package")
     clean_dir(pkgdir)

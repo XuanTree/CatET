@@ -229,14 +229,34 @@ else()
     set(CATET_PLATFORM "Linux")
 endif()
 
-# CMAKE_SYSTEM_PROCESSOR 在 MinGW(UCRT64) 下通常为 AMD64、Linux 下为
-# x86_64/aarch64，这里归一化为短名用于文件名。
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
-    set(CATET_ARCH "x64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
-    set(CATET_ARCH "arm64")
-else()
-    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CATET_ARCH)
+# 架构短名。macOS 支持一次构建多架构（通用二进制）：CMAKE_OSX_ARCHITECTURES
+# 里列了多个架构时统一标 universal，否则只按宿主机器判断会误标成 arm64。
+# 用 list(LENGTH) 而不是 MATCHES ";"：后者在变量值为列表时语义不可靠。
+set(CATET_ARCH "")
+
+if(APPLE)
+    set(_catet_osx_archs "${CMAKE_OSX_ARCHITECTURES}")
+    list(LENGTH _catet_osx_archs _catet_osx_arch_count)
+
+    if(_catet_osx_arch_count GREATER 1)
+        set(CATET_ARCH "universal")
+    elseif(_catet_osx_arch_count EQUAL 1)
+        string(TOLOWER "${_catet_osx_archs}" CATET_ARCH)
+
+        if(CATET_ARCH STREQUAL "x86_64")
+            set(CATET_ARCH "x64")
+        endif()
+    endif()
+endif()
+
+if(NOT CATET_ARCH)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64)$")
+        set(CATET_ARCH "x64")
+    elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64)$")
+        set(CATET_ARCH "arm64")
+    else()
+        string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" CATET_ARCH)
+    endif()
 endif()
 
 # DEB/RPM 安装包内的架构元数据必须使用发行版规范值（amd64 / x86_64 /
