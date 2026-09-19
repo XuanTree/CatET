@@ -1,9 +1,20 @@
+<div align="center">
+
+<img src=".github/assets/icon-256.png" width="128" alt="CatET app icon" />
+
 # CatET — Cat's English Trial
+
+**A roguelike word-spelling platformer that turns real CET-4 / CET-6 vocabulary into 100 levels of play.**
 
 ![GitHub License](https://img.shields.io/github/license/XuanTree/CatET)
 [![Windows 10 | 11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=flat-square&logo=windows11)](https://www.microsoft.com/windows)
 ![Linux](https://img.shields.io/badge/Linux-Supported-4caf50?logo=linux&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?logo=apple&logoColor=white)
 ![Static Badge](https://img.shields.io/badge/RayLib_Game-RayGUI_App-blue)
+
+English | [中文](#中文)
+
+</div>
 
 > **Cat's English Trial（小猫的英语试炼）** — a 2D platformer that helps you memorize
 > English words while playing. Inspired by the CET (College English Test) exams.
@@ -13,10 +24,6 @@ CatET is a roguelike word-spelling game built from scratch in **C** with
 [**Raygui**](https://github.com/raysan5/raygui). You explore procedurally generated
 levels, spell the right words, dodge enemy bullet patterns, and push through
 **100 levels** in a single run — the faster you finish, the better your record.
-
-The game is still in development, but the core loop is fully playable.
-
-![platform](assets/sprites/cat_run.png) *Player sprite*
 
 ---
 
@@ -34,7 +41,11 @@ The game is still in development, but the core loop is fully playable.
 - **Crisp scaling** — fixed 640×480 logical resolution upscaled through a render target, no blur.
 - **Self-contained builds** — all sprites, sounds, fonts and word lists are **embedded into the executable**; installers expose no asset files.
 
-![screenshot](screenshot.jpg)
+<p align="center">
+  <img src="screenshot.jpg" width="760" alt="CatET gameplay screenshot" />
+</p>
+
+<p align="center"><sub>Procedurally generated levels, turn-based spelling battles and bullet-hell boss fights — captured in-game.</sub></p>
 
 ---
 
@@ -110,7 +121,7 @@ the file manager.
 
 ## Prebuilt installers (GitHub Releases)
 
-Push a tag and GitHub Actions builds + publishes every platform installer:
+Push a tag and GitHub Actions builds + publishes every platform installer, here is an example:
 
 ```sh
 git tag v1.0.0 && git push origin v1.0.0
@@ -125,7 +136,7 @@ git tag v1.0.0 && git push origin v1.0.0
 | macOS arm64 / x64 | `macos-14` / `macos-13` | `CatET-<ver>-MacOS-<arch>.dmg` |
 
 and attaches all of them to the Release for that tag. Artifacts follow the naming
-rule `CatET-<版本>-<平台>[-Setup]-<架构>.<扩展名>`. The version baked into the
+rule `CatET-<version>-<platform>[-Setup]-<arch>.<ext>`. The version baked into the
 installers comes from the tag itself (the workflow exports `CATET_VERSION`), so tag
 `v0.7.0` produces e.g. `CatET-0.7.0-Windows-Setup-x64.exe`. The workflow can also be
 started manually from the Actions tab — that run only produces downloadable
@@ -177,7 +188,7 @@ python build.py --platform macos   # macOS only (dmg)
 python build.py --all              # try both Windows and Linux
 ```
 
-Generated artifacts (named `CatET-<版本>-<平台>[-Setup]-<架构>.<扩展名>`):
+Generated artifacts (named `CatET-<version>-<platform>[-Setup]-<arch>.<ext>`):
 
 ```
 Windows/  CatET-1.0.0-Windows-Setup-x64.exe   (NSIS setup wizard)
@@ -201,7 +212,8 @@ CET/
 ├── CMakeLists.txt          # top-level build + CPack packaging
 ├── CMakePresets.json       # CMake presets (MinGW debug/release)
 ├── build.py                # one-click cross-platform packaging script
-├── .github/                # CI: tag → build all platforms + publish to Releases
+├── .github/                # CI workflows + repo scripts + README-only images
+│                           # (.github/assets/ stays outside assets/ → never shipped)
 ├── packaging/              # NSIS resource template / .desktop / Info.plist / icons
 ├── assets/
 │   ├── sprites/            # player / enemy / boss / bullet / platform / icon sprites
@@ -231,6 +243,11 @@ Headers use the double guard convention (`#ifndef` + `#pragma once`).
 executable. At runtime, [`include/tools/resource.h`](include/tools/resource.h)
 loads textures, sounds, fonts and word lists straight from memory — the installed
 game has **no external asset folder**.
+
+Only files under `assets/` get embedded — anything kept elsewhere (for example the
+README artwork under [`.github/assets/`](.github/assets/), regenerated with
+[`make_readme_icon.py`](.github/scripts/make_readme_icon.py)) never enters the
+executable, so documentation images cost nothing at runtime.
 
 ---
 
@@ -291,12 +308,17 @@ origins:
 
 | Directory | Contents | Origin / License |
 |---|---|---|
-| [`assets/sprites/`](assets/sprites/) | Player (`cat_*`), enemy, boss, bullet, platforms and the app icon | Drawn for this game (the cat character is inspired by **Nai Tang**). Use freely within this project; reuse elsewhere at your own discretion. |
+| [`assets/sprites/`](assets/sprites/) | Player (`cat_*`), enemy, boss, bullet, platforms and the app icon | **100% hand-drawn by XuanTree** — every character, enemy, boss, bullet, platform tile and the app icon was drawn pixel by pixel for this game; no third-party sprite packs are used. The cat character is inspired by **Nai Tang**. Use freely within this project; reuse elsewhere at your own discretion. |
 | [`assets/sounds/`](assets/sounds/) | 9 `.ogg` sound effects | **Not all self-made.** Most come from [Mixkit](https://mixkit.co/) and are used under its free license (see below); the rest were created or edited by me. |
 | [`assets/music/`](assets/music/) | 5 `.mp3` background music tracks (`CatET`, `Find The Letter`, `IDK`, `Test Your Words`, `Wonderful Words Memorizing Time`) | **Composed by Deepseek.** Free to use without restriction — see [About the music](#about-the-music). |
 | [`assets/words/`](assets/words/) | `CET4.txt` / `CET6.txt` word banks | Bundled with the game; format is `word<TAB>part-of-speech. meaning`. |
 | [`assets/fonts/`](assets/fonts/) | `pixel_font.ttf` (UI font) | From [fusion-pixel-font](https://github.com/TakWolf/fusion-pixel-font) by [@TakWolf](https://github.com/TakWolf). **Not distributed in this repo** — `assets/fonts/` is git-ignored (see [`.gitignore`](.gitignore:27)). Download it and place it there before building (CI does this automatically via [`fetch_font.py`](.github/scripts/fetch_font.py)). |
 | [`assets/data/`](assets/data/) | `save.json` (runtime) | Runtime-only persistence, not a shipped asset. |
+
+> **Sprite credit:** every sprite under [`assets/sprites/`](assets/sprites/) — the cat
+> player with all of its animation frames, the paper enemies, the boss, bullets,
+> platform tiles and the app icon — was **hand-drawn by XuanTree**, the project
+> author. Nothing under `assets/sprites/` comes from a third-party sprite pack.
 
 ### About the sound effects (important)
 
@@ -337,3 +359,7 @@ Attribution is appreciated but **not required**.
 
 The music is licensed separately from the game code (which remains GPL-3.0) and is
 provided "as is", without warranty of any kind.
+
+## 中文
+
+我相信你通过四六级之后，能看懂上面的README说的什么

@@ -10,6 +10,10 @@
 out/
 build/
 
+# Python bytecode cache（.github/scripts/*.py 等脚本运行时产生，勿入库）
+__pycache__/
+*.pyc
+
 # package files（Windows/、Linux/ 是本地构建产物；packaging/ 则是 CMake/CPack
 # 打包所需的源文件：CatET.rc / CatET.desktop / Info.plist.in / 图标。全新克隆
 # 与 CI 构建都必须用到它，因此纳入版本控制，不再忽略）
